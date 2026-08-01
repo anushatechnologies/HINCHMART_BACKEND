@@ -1,0 +1,1519 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  name          String?
+  email         String?  @unique
+  phone         String   @unique
+  password_hash String?
+  role          String   @default("CUSTOMER") // e.g., CUSTOMER, ADMIN
+  status        String   @default("ACTIVE")
+  referralCode  String?  @map("referral_code")
+  language      String   @default("en")
+  createdAt     DateTime @default(now()) @map("created_at")
+  // Push Notifications (FCM)
+  fcmTokens     Json?    @default("[]") @map("fcm_tokens")
+
+  addresses Address[]
+  cart      Cart?
+  orders    Order[]
+  reviews   Review[]
+  wishlist  WishlistItem[]
+  rfqs      Rfq[]
+  qnas      ProductQnA[]
+
+  // GST & Business Details
+  gstin       String?
+  companyName String?  @map("company_name")
+  
+  // B2B Enterprise Features
+  companyId   Int?     @map("company_id")
+  b2bRole     String?  @default("BUYER") @map("b2b_role") // BUYER, MANAGER, ADMIN
+  
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  purchaseOrders PurchaseOrder[]
+  rentalRequests RentalRequest[]
+  
+  // Phase 4 Relations
+  customerRewards       CustomerReward[]
+  walletTransactions    CustomerWalletTransaction[]
+  notifications         CustomerNotification[]
+  notificationSettings  CustomerNotificationSetting?
+
+  // Phase 6 Relations
+  supportTickets        SupportTicket[]
+  chatSessions          ChatSession[]
+
+  @@map("users")
+}
+
+model Otp {
+  id        Int      @id @default(autoincrement())
+  target    String   // Stores email or phone number
+  type      String   // 'EMAIL' or 'PHONE'
+  otp       String
+  expiresAt DateTime @map("expires_at")
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@map("otps")
+}
+
+model Address {
+  id        Int     @id @default(autoincrement())
+  userId    Int     @map("user_id")
+  label     String? // e.g., HOME, WORK
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean @default(false) @map("is_default")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+model Category {
+  id       Int     @id @default(autoincrement())
+  name     String
+  slug     String  @unique
+  parentId Int?    @map("parent_id")
+  imageUrl String? @map("image_url")
+  isActive Boolean @default(true) @map("is_active")
+
+  parent     Category?   @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children   Category[]  @relation("CategoryHierarchy")
+  products   Product[]
+  attributes Attribute[]
+  vendorRequests VendorCategoryRequest[]
+
+  @@map("categories")
+}
+
+model Attribute {
+  id         Int    @id @default(autoincrement())
+  categoryId Int    @map("category_id")
+  name       String
+  type       String // e.g., text, number, select
+
+  category Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  values   AttributeValue[]
+
+  @@map("attributes")
+}
+
+model AttributeValue {
+  id          Int    @id @default(autoincrement())
+  attributeId Int    @map("attribute_id")
+  value       String
+
+  attribute Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@map("attribute_values")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  brand       String?
+  categoryId  Int      @map("category_id")
+  description String?  @db.Text
+  basePrice       Decimal  @map("base_price") @db.Decimal(10, 2)
+  mrp             Decimal  @db.Decimal(10, 2)
+  bulkPrice       Decimal? @map("bulk_price") @db.Decimal(10, 2)
+  dealerPrice     Decimal? @map("dealer_price") @db.Decimal(10, 2)
+  gstPercent      Decimal  @map("gst_percent") @db.Decimal(5, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  vendorId        Int?     @map("vendor_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // New B2B Fields
+  barcode         String?
+  modelNumber     String?  @map("model_number")
+  hsnCode         String?  @map("hsn_code")
+  moq             Int      @default(1)
+  countryOfOrigin String?  @map("country_of_origin")
+  warranty        String?
+  technicalSpecs  Json?    @map("technical_specs")
+  features        Json?
+  stockStatus     String   @default("IN_STOCK") @map("stock_status")
+
+  // Rental Fields
+  isRentable        Boolean  @default(false) @map("is_rentable")
+  rentPricePerDay   Decimal? @map("rent_price_per_day") @db.Decimal(10, 2)
+  minRentalDays     Int?     @map("min_rental_days")
+
+  // Delivery Fields
+  isSameDayDelivery Boolean  @default(false) @map("is_same_day_delivery")
+
+  // Module 5 Fields
+  approvalStatus    String   @default("APPROVED") @map("approval_status") // PENDING, APPROVED, REJECTED
+  deletedAt         DateTime? @map("deleted_at")
+  metaTitle         String?  @map("meta_title")
+  metaDescription   String?  @map("meta_description") @db.Text
+  metaKeywords      String?  @map("meta_keywords")
+
+
+  category      Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  vendor        Vendor?          @relation(fields: [vendorId], references: [id])
+  variants      ProductVariant[]
+  reviews       Review[]
+  wishlistItems WishlistItem[]
+  images        ProductImage[]
+  rfqItems      RfqItem[]
+  deals         Deal[]
+  
+  // New Relations
+  documents     ProductDocument[]
+  videos        ProductVideo[]
+  qnas          ProductQnA[]
+  relatedFrom   RelatedProduct[] @relation("ProductToRelated")
+  relatedTo     RelatedProduct[] @relation("RelatedToProduct")
+  rentalDetails RentalDetails?
+  flashSales    VendorFlashSale[]
+  rentalBookings  RentalBooking[]
+  maintenanceRecords MaintenanceRecord[]
+  companyContracts CompanyContract[]
+  rentalRequests   RentalRequest[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id             Int      @id @default(autoincrement())
+  productId      Int      @map("product_id")
+  sku            String   @unique
+  price          Decimal  @db.Decimal(10, 2)
+  stockQty       Int      @default(0) @map("stock_qty")
+  weight         Decimal? @db.Decimal(10, 2)
+  attributesJson Json?    @map("attributes_json")
+
+  product    Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  images     ProductImage[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  warehouseInventory WarehouseInventory[]
+  batches            ProductBatch[]
+  inventoryHistory   InventoryHistory[]
+
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        Int     @id @default(autoincrement())
+  productId Int     @map("product_id")
+  variantId Int?    @map("variant_id")
+  url       String
+  isPrimary Boolean @default(false) @map("is_primary")
+  sortOrder Int     @default(0) @map("sort_order")
+
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@map("product_images")
+}
+
+model Vendor {
+  id           Int     @id @default(autoincrement())
+  companyName  String  @map("company_name")
+  ownerName    String? @map("owner_name")
+  businessType String? @default("RETAILER") @map("business_type") // INDIVIDUAL, BUSINESS, MANUFACTURER, RETAILER, etc.
+  gstin        String?
+  panNumber    String? @map("pan_number")
+  aadhaarNumber String? @map("aadhaar_number")
+  cinNumber    String? @map("cin_number")
+  logoUrl      String? @map("logo_url")
+  bannerUrl    String? @map("banner_url")
+  contactEmail String  @unique @map("contact_email")
+  contactPhone String  @unique @map("contact_phone")
+  passwordHash String? @map("password_hash")
+  
+  // Push Notifications (FCM)
+  fcmTokens    Json?   @default("[]") @map("fcm_tokens")
+  // Phase 7 Onboarding Fields
+  bankAccountNumber String? @map("bank_account_number")
+  ifscCode          String? @map("ifsc_code")
+  bankName          String? @map("bank_name")
+  pickupAddress     String? @map("pickup_address") @db.Text
+  businessDocUrl    String? @map("business_doc_url")
+  onboardingStep    Int     @default(1) @map("onboarding_step")
+
+  // Business Focus (Added for customized onboarding)
+  targetAudiences   Json?   @map("target_audiences")
+  serviceCities     Json?   @map("service_cities")
+  primaryCategories Json?   @map("primary_categories")
+
+  // Module 4: Store Management
+  aboutStore        String? @map("about_store") @db.Text
+  businessHours     Json?   @map("business_hours") // JSON object { Mon: { open: "09:00", close: "18:00", closed: false }, ... }
+  returnPolicy      String? @map("return_policy") @db.Text
+  shippingPolicy    String? @map("shipping_policy") @db.Text
+  warrantyPolicy    String? @map("warranty_policy") @db.Text
+
+  commissionRate Decimal @default(10.00) @map("commission_rate") @db.Decimal(5, 2)
+  status       String  @default("PENDING") // PENDING, APPROVED, REJECTED
+  kycStatus    String  @default("PENDING") @map("kyc_status") // PENDING, VERIFIED, REJECTED
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  products       Product[]
+  quotes         Quote[]
+  settlements    VendorSettlement[]
+  orderItems     OrderItem[]       @relation("VendorOrderItems")
+  
+  // Phase 6 Relations
+  vendorUsers    VendorUser[]
+  vendorRoles    VendorRole[]
+  warehouses     VendorWarehouse[]
+  returnRequests ReturnRequest[]
+  categoryRequests VendorCategoryRequest[]
+  brands           VendorBrand[]
+  inventoryHistory InventoryHistory[]
+  couriers         VendorCourier[]
+  pickupRequests   PickupRequest[]
+  rentalBookings   RentalBooking[]
+  maintenanceRecords MaintenanceRecord[]
+  serviceOfferings ServiceOffering[]
+  serviceTimeSlots ServiceTimeSlot[]
+  serviceAreas     ServiceArea[]
+  serviceBookings  ServiceBooking[]
+  walletTransactions VendorWalletTransaction[]
+  invoices         VendorInvoice[]
+  creditNotes      VendorCreditNote[]
+  coupons          Coupon[]
+  adCampaigns      VendorAdCampaign[]
+  flashSales       VendorFlashSale[]
+  emailCampaigns   VendorEmailCampaign[]
+  supportTickets   VendorSupportTicket[]
+  chatMessages     VendorChatMessage[]
+  activityLogs     VendorActivityLog[]
+  loginHistory     VendorLoginHistory[]
+  notificationSettings VendorNotificationSetting?
+
+  // Module 9: Payments & Settlements
+  razorpayAccountId String? @map("razorpay_account_id")
+  
+  // Module 19: Settings
+  shippingFee           Float?   @map("shipping_fee")
+  freeShippingThreshold Float?   @map("free_shipping_threshold")
+  gstNumber             String?  @map("gst_number")
+  twoFactorEnabled      Boolean  @default(false) @map("two_factor_enabled")
+
+  apiKeys          VendorApiKey[]
+  webhooks         VendorWebhook[]
+
+  @@map("vendors")
+}
+
+model VendorSettlement {
+  id               Int       @id @default(autoincrement())
+  vendorId         Int       @map("vendor_id")
+  orderId          Int       @map("order_id")
+  grossAmount      Decimal   @map("gross_amount") @db.Decimal(10, 2)
+  commissionAmount Decimal   @map("commission_amount") @db.Decimal(10, 2)
+  tdsAmount        Decimal   @default(0) @map("tds_amount") @db.Decimal(10, 2)
+  netAmount        Decimal   @map("net_amount") @db.Decimal(10, 2)
+  status           String    @default("PENDING") // PENDING, PAID
+  paidAt           DateTime? @map("paid_at")
+  payoutId         String?   @map("payout_id") // Razorpay Payout ID
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_settlements")
+}
+
+model Cart {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        Int @id @default(autoincrement())
+  cartId    Int @map("cart_id")
+  variantId Int @map("variant_id")
+  quantity  Int @default(1)
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@map("cart_items")
+}
+
+model WishlistItem {
+  id        Int @id @default(autoincrement())
+  userId    Int @map("user_id")
+  productId Int @map("product_id")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("wishlist_items")
+}
+
+model Order {
+  id            Int      @id @default(autoincrement())
+  orderNumber   String   @unique @map("order_number")
+  userId        Int      @map("user_id")
+  addressId     Int      @map("address_id")
+  status        String   @default("PENDING")
+  paymentStatus String   @default("UNPAID") @map("payment_status")
+  paymentMethod String   @map("payment_method")
+  subtotal      Decimal  @db.Decimal(10, 2)
+  discount      Decimal  @default(0.00) @db.Decimal(10, 2)
+  tax           Decimal  @db.Decimal(10, 2)
+  shippingFee   Decimal  @default(0.00) @map("shipping_fee") @db.Decimal(10, 2)
+  total         Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // GST Details
+  gstin       String?
+  companyName String?  @map("company_name")
+  cgst        Decimal  @default(0.00) @db.Decimal(10, 2)
+  sgst        Decimal  @default(0.00) @db.Decimal(10, 2)
+  igst        Decimal  @default(0.00) @db.Decimal(10, 2)
+
+  // Coupon / Discount
+  couponCode     String?  @map("coupon_code")
+  couponDiscount Decimal  @default(0.00) @map("coupon_discount") @db.Decimal(10, 2)
+
+  // B2B Corporate Credit
+  companyId      Int?     @map("company_id")
+  isCreditPurchase Boolean @default(false) @map("is_credit_purchase")
+  
+  // Logistics & Proof of Delivery
+  deliveryPartnerId Int?      @map("delivery_partner_id")
+  podImageUrl       String?   @map("pod_image_url")
+  deliveredAt       DateTime? @map("delivered_at")
+
+  // Enterprise PO Workflow
+  purchaseOrderId   Int?      @map("purchase_order_id")
+
+  company  Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deliveryPartner DeliveryPartner? @relation(fields: [deliveryPartnerId], references: [id], onDelete: SetNull)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  creditNotes CreditNote[]
+  returnRequests ReturnRequest[]
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  address  Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  items       OrderItem[]
+  payments    Payment[]
+  settlements VendorSettlement[]
+  vendorInvoices VendorInvoice[]
+  vendorCreditNotes VendorCreditNote[]
+  supportTickets VendorSupportTicket[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id              Int     @id @default(autoincrement())
+  orderId         Int     @map("order_id")
+  variantId       Int     @map("variant_id")
+  vendorId        Int?    @map("vendor_id")
+  quantity        Int
+  priceAtPurchase Decimal @map("price_at_purchase") @db.Decimal(10, 2)
+  status          String  @default("PENDING") // PENDING, PACKED, SHIPPED, DELIVERED, CANCELLED, RETURNED
+  trackingNumber  String? @map("tracking_number")
+  courierName     String? @map("courier_name")
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  vendor  Vendor?        @relation("VendorOrderItems", fields: [vendorId], references: [id])
+
+  @@map("order_items")
+}
+
+model Payment {
+  id            Int      @id @default(autoincrement())
+  orderId       Int      @map("order_id")
+  provider      String
+  providerTxnId String?  @map("provider_txn_id")
+  amount        Decimal  @db.Decimal(10, 2)
+  status        String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Coupon {
+  id            Int       @id @default(autoincrement())
+  vendorId      Int?      @map("vendor_id")
+  code          String    @unique
+  type          String // e.g., PERCENTAGE, FIXED
+  value         Decimal   @db.Decimal(10, 2)
+  minOrderValue Decimal?  @map("min_order_value") @db.Decimal(10, 2)
+  maxUses       Int?      @map("max_uses")
+  usedCount     Int       @default(0) @map("used_count")
+  expiresAt     DateTime? @map("expires_at")
+  isActive      Boolean   @default(true) @map("is_active")
+
+  vendor        Vendor?   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("coupons")
+}
+
+model Review {
+  id         Int     @id @default(autoincrement())
+  productId  Int     @map("product_id")
+  userId     Int     @map("user_id")
+  rating     Int     @default(5)
+  comment    String? @db.Text
+  imageUrl   String? @map("image_url")
+  isApproved Boolean @default(false) @map("is_approved")
+  vendorReply     String?  @map("vendor_reply") @db.Text
+  vendorRepliedAt DateTime? @map("vendor_replied_at")
+  isReported      Boolean  @default(false) @map("is_reported")
+  reportReason    String?  @map("report_reason")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Banner {
+  id        Int     @id @default(autoincrement())
+  title     String?
+  imageUrl  String  @map("image_url")
+  linkUrl   String? @map("link_url")
+  position  String // e.g., HOMEPAGE_TOP
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  @@map("banners")
+}
+
+model AdminUser {
+  id           Int    @id @default(autoincrement())
+  name         String
+  email        String @unique
+  passwordHash String @map("password_hash")
+  roleId       Int    @map("role_id")
+  status       String @default("ACTIVE")
+
+  role      Role       @relation(fields: [roleId], references: [id])
+  auditLogs AuditLog[]
+
+  @@map("admin_users")
+}
+
+model Role {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  adminUsers  AdminUser[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int @map("role_id")
+  permissionId Int @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  adminUserId Int      @map("admin_user_id")
+  action      String
+  entity      String
+  entityId    String?  @map("entity_id")
+  metaJson    Json?    @map("meta_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+model Rfq {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  rfqNumber   String   @unique @map("rfq_number")
+  status      String   @default("PENDING") // PENDING, QUOTED, REJECTED, ACCEPTED
+  notes       String?  @db.Text
+  boqUrl      String?  @map("boq_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       RfqItem[]
+  quotes      Quote[]
+  messages    RfqMessage[]
+
+  @@map("rfqs")
+}
+
+model RfqMessage {
+  id         Int      @id @default(autoincrement())
+  rfqId      Int      @map("rfq_id")
+  senderId   Int      @map("sender_id")
+  senderRole String   @map("sender_role") // "BUYER" or "VENDOR"
+  message    String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  rfq        Rfq      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  @@map("rfq_messages")
+}
+
+model RfqItem {
+  id          Int      @id @default(autoincrement())
+  rfqId       Int      @map("rfq_id")
+  productId   Int?     @map("product_id")
+  productName String   @map("product_name") 
+  quantity    Int
+  targetPrice Decimal? @map("target_price") @db.Decimal(10, 2)
+
+  rfq         Rfq      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  quoteItems  QuoteItem[]
+
+  @@map("rfq_items")
+}
+
+model Quote {
+  id          Int      @id @default(autoincrement())
+  rfqId       Int      @map("rfq_id")
+  vendorId    Int?     @map("vendor_id")
+  status      String   @default("SUBMITTED") // SUBMITTED, ACCEPTED, REJECTED
+  totalAmount Decimal  @map("total_amount") @db.Decimal(10, 2)
+  validUntil  DateTime @map("valid_until")
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rfq         Rfq         @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor      Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  items       QuoteItem[]
+
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          Int      @id @default(autoincrement())
+  quoteId     Int      @map("quote_id")
+  rfqItemId   Int      @map("rfq_item_id")
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice  Decimal  @map("total_price") @db.Decimal(10, 2)
+  remarks     String?
+
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  rfqItem     RfqItem  @relation(fields: [rfqItemId], references: [id], onDelete: Restrict)
+
+  @@map("quote_items")
+}
+
+// ================= NEW HOMEPAGE MODELS ================= //
+
+model Testimonial {
+  id          Int      @id @default(autoincrement())
+  authorName  String
+  authorTitle String?
+  content     String   @db.Text
+  rating      Int      @default(5)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("testimonials")
+}
+
+
+model Blog {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String   @unique
+  summary     String   @db.Text
+  content     String   @db.Text
+  imageUrl    String?  @map("image_url")
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("blogs")
+}
+
+model Deal {
+  id          Int      @id @default(autoincrement())
+  productId   Int      @map("product_id")
+  dealPrice   Decimal  @db.Decimal(10, 2) @map("deal_price")
+  startTime   DateTime @map("start_time")
+  endTime     DateTime @map("end_time")
+  isActive    Boolean  @default(true) @map("is_active")
+  
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("deals")
+}
+
+model BuyingGuide {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String   @unique
+  summary     String   @db.Text
+  content     String   @db.Text
+  imageUrl    String?  @map("image_url")
+  category    String?
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("buying_guides")
+}
+
+// ================= NEW B2B PRODUCT MODELS ================= //
+
+model ProductDocument {
+  id        Int     @id @default(autoincrement())
+  productId Int     @map("product_id")
+  title     String
+  url       String
+  type      String  // e.g., MANUAL, BROCHURE, DATASHEET
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_documents")
+}
+
+model ProductVideo {
+  id        Int     @id @default(autoincrement())
+  productId Int     @map("product_id")
+  title     String?
+  url       String
+  type      String  // e.g., YOUTUBE, VIMEO, 360_VIEW
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_videos")
+}
+
+model ProductQnA {
+  id        Int      @id @default(autoincrement())
+  productId Int      @map("product_id")
+  userId    Int      @map("user_id")
+  question  String   @db.Text
+  answer    String?  @db.Text
+  isAnswered Boolean @default(false) @map("is_answered")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("product_qnas")
+}
+
+model RelatedProduct {
+  id               Int    @id @default(autoincrement())
+  productId        Int    @map("product_id")
+  relatedProductId Int    @map("related_product_id")
+  relationType     String // e.g., SIMILAR, FREQUENTLY_BOUGHT
+
+  product          Product @relation("ProductToRelated", fields: [productId], references: [id], onDelete: Cascade)
+  relatedProduct   Product @relation("RelatedToProduct", fields: [relatedProductId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, relatedProductId, relationType])
+  @@map("related_products")
+}
+
+// ================= NEW ENTERPRISE B2B MODELS ================= //
+
+model Company {
+  id              Int      @id @default(autoincrement())
+  name            String
+  gstin           String?  @unique
+  creditLimit     Decimal  @default(0.00) @map("credit_limit") @db.Decimal(10, 2)
+  availableCredit Decimal  @default(0.00) @map("available_credit") @db.Decimal(10, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  users           User[]
+  orders          Order[]
+  contracts       CompanyContract[]
+  purchaseOrders  PurchaseOrder[]
+  creditNotes     CreditNote[]
+
+  @@map("companies")
+}
+
+model CompanyContract {
+  id           Int      @id @default(autoincrement())
+  companyId    Int      @map("company_id")
+  productId    Int      @map("product_id")
+  customPrice  Decimal  @map("custom_price") @db.Decimal(10, 2)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, productId])
+  @@map("company_contracts")
+}
+
+model DeliveryPartner {
+  id            Int      @id @default(autoincrement())
+  name          String
+  phone         String
+  vehicleNumber String?  @map("vehicle_number")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  orders        Order[]
+
+  @@map("delivery_partners")
+}
+
+model PurchaseOrder {
+  id            Int      @id @default(autoincrement())
+  poNumber      String   @map("po_number")
+  companyId     Int      @map("company_id")
+  userId        Int      @map("user_id")
+  documentUrl   String   @map("document_url")
+  amount        Decimal  @db.Decimal(10, 2)
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  orders        Order[]
+
+  @@map("purchase_orders")
+}
+
+model CreditNote {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      @map("company_id")
+  orderId       Int      @map("order_id")
+  amount        Decimal  @db.Decimal(10, 2)
+  reason        String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("credit_notes")
+}
+
+// ================= RENTAL & SAME-DAY DELIVERY MODELS ================= //
+
+model RentalRequest {
+  id            Int      @id @default(autoincrement())
+  productId     Int      @map("product_id")
+  userId        Int?     @map("user_id")
+  customerName  String   @map("customer_name")
+  customerPhone String   @map("customer_phone")
+  customerEmail String?  @map("customer_email")
+  startDate     DateTime @map("start_date")
+  durationDays  Int      @map("duration_days")
+  city          String
+  totalAmount   Decimal  @map("total_amount") @db.Decimal(10, 2)
+  status        String   @default("PENDING") // PENDING, CONFIRMED, ACTIVE, RETURNED, CANCELLED
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  user          User?    @relation(fields: [userId], references: [id])
+
+  @@map("rental_requests")
+}
+
+// ================= PHASE 6: ADVANCED SELLER OPERATIONS ================= //
+
+model VendorRole {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  name        String   // e.g., "Manager", "Finance", "Inventory"
+  permissions Json     // Array of permissions or object map
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vendor Vendor       @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  users  VendorUser[]
+
+  @@map("vendor_roles")
+}
+
+model VendorUser {
+  id           Int      @id @default(autoincrement())
+  vendorId     Int      @map("vendor_id")
+  roleId       Int?     @map("role_id")
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  vendor Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  role   VendorRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  activityLogs VendorActivityLog[]
+  loginHistory VendorLoginHistory[]
+
+  @@map("vendor_users")
+}
+
+model VendorWarehouse {
+  id         Int      @id @default(autoincrement())
+  vendorId   Int      @map("vendor_id")
+  name       String
+  address    String   @db.Text
+  city       String
+  state      String
+  pincode    String
+  contactNum String   @map("contact_num")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  vendor Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  warehouseInventory WarehouseInventory[]
+  batches            ProductBatch[]
+  inventoryHistory   InventoryHistory[]
+  pickupRequests     PickupRequest[]
+
+  @@map("vendor_warehouses")
+}
+
+// Tracks a vendor's request to sell in a specific category
+model VendorCategoryRequest {
+  id         Int      @id @default(autoincrement())
+  vendorId   Int      @map("vendor_id")
+  categoryId Int      @map("category_id")
+  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  comments   String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, categoryId])
+  @@map("vendor_category_requests")
+}
+
+// Tracks brands a vendor owns or is approved to sell
+model VendorBrand {
+  id         Int      @id @default(autoincrement())
+  vendorId   Int      @map("vendor_id")
+  name       String
+  logoUrl    String?  @map("logo_url")
+  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, name])
+  @@map("vendor_brands")
+}
+
+// Tracks stock levels per warehouse
+model WarehouseInventory {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int      @map("warehouse_id")
+  variantId   Int      @map("variant_id")
+  stockQty    Int      @default(0) @map("stock_qty")
+  locationBin String?  @map("location_bin")
+
+  warehouse   VendorWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  variant     ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, variantId])
+  @@map("warehouse_inventory")
+}
+
+// Tracks manufacturing/expiry batches
+model ProductBatch {
+  id          Int       @id @default(autoincrement())
+  variantId   Int       @map("variant_id")
+  warehouseId Int       @map("warehouse_id")
+  batchNumber String    @map("batch_number")
+  mfgDate     DateTime? @map("mfg_date")
+  expDate     DateTime? @map("exp_date")
+  stockQty    Int       @default(0) @map("stock_qty")
+
+  variant     ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse   VendorWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@unique([variantId, batchNumber])
+  @@map("product_batches")
+}
+
+// Audit log for all stock movements
+model InventoryHistory {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  variantId   Int      @map("variant_id")
+  warehouseId Int?     @map("warehouse_id")
+  changeQty   Int      @map("change_qty") // positive (restock) or negative (sale)
+  reason      String   // SALE, RESTOCK, TRANSFER, ADJUSTMENT
+  reference   String?  // e.g., Order # or Transfer ID
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vendor      Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  variant     ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse   VendorWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@map("inventory_history")
+}
+
+model ReturnRequest {
+  id           Int      @id @default(autoincrement())
+  vendorId     Int      @map("vendor_id")
+  orderId      Int      @map("order_id")
+  customerName String   @map("customer_name")
+  reason       String   @db.Text
+  amount       Decimal  @db.Decimal(10, 2)
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED, REFUNDED
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("return_requests")
+}
+
+// ---------------------------------------------------------
+// Module 9: Shipping & Fulfillment
+// ---------------------------------------------------------
+model VendorCourier {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  courierName String   @map("courier_name")
+  accountCode String?  @map("account_code")
+  isActive    Boolean  @default(true) @map("is_active")
+  isDefault   Boolean  @default(false) @map("is_default")
+
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  @@unique([vendorId, courierName])
+  @@map("vendor_couriers")
+}
+
+model PickupRequest {
+  id             Int       @id @default(autoincrement())
+  vendorId       Int       @map("vendor_id")
+  warehouseId    Int?      @map("warehouse_id")
+  courierName    String    @map("courier_name")
+  scheduledDate  DateTime  @map("scheduled_date")
+  status         String    @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  orderItemIds   Json      @map("order_item_ids")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  vendor         Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  warehouse      VendorWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@map("pickup_requests")
+}
+
+// ---------------------------------------------------------
+// Module 10: Rentals
+// ---------------------------------------------------------
+model RentalDetails {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @unique @map("product_id")
+  dailyRate       Decimal  @map("daily_rate") @db.Decimal(10, 2)
+  securityDeposit Decimal  @map("security_deposit") @db.Decimal(10, 2)
+  minDays         Int      @default(1) @map("min_days")
+  maxDays         Int?     @map("max_days")
+  terms           String?  @db.Text
+  
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  @@map("rental_details")
+}
+
+model RentalBooking {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  productId       Int      @map("product_id")
+  userId          Int?     @map("user_id") // Customer who rented
+  customerName    String   @map("customer_name")
+  startDate       DateTime @map("start_date")
+  endDate         DateTime @map("end_date")
+  status          String   @default("PENDING") // PENDING, ACTIVE, RETURNED, CANCELLED
+  totalAmount     Decimal  @map("total_amount") @db.Decimal(10, 2)
+  depositStatus   String   @default("HELD") // HELD, REFUNDED, DEDUCTED
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@map("rental_bookings")
+}
+
+model MaintenanceRecord {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  productId       Int      @map("product_id")
+  type            String   // MAINTENANCE, DAMAGE_REPORT
+  description     String   @db.Text
+  cost            Decimal? @db.Decimal(10, 2)
+  status          String   @default("OPEN") // OPEN, RESOLVED
+  reportedAt      DateTime @default(now()) @map("reported_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_records")
+}
+
+// ---------------------------------------------------------
+// Module 11: Services
+// ---------------------------------------------------------
+model ServiceOffering {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  name        String
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  durationMin Int      @default(60) @map("duration_min") // Duration in minutes
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  bookings    ServiceBooking[]
+  
+  @@map("service_offerings")
+}
+
+model ServiceTimeSlot {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  dayOfWeek   Int      // 0=Sun, 1=Mon, etc.
+  startTime   String   // "09:00"
+  endTime     String   // "11:00"
+  isActive    Boolean  @default(true) @map("is_active")
+
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("service_time_slots")
+}
+
+model ServiceArea {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  pincode     String
+  city        String?
+  isActive    Boolean  @default(true) @map("is_active")
+
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, pincode])
+  @@map("service_areas")
+}
+
+model ServiceBooking {
+  id               Int      @id @default(autoincrement())
+  vendorId         Int      @map("vendor_id")
+  serviceId        Int      @map("service_id")
+  customerName     String   @map("customer_name")
+  serviceAddress   String   @db.Text @map("service_address")
+  scheduledDate    DateTime @map("scheduled_date")
+  timeSlot         String   @map("time_slot") // "09:00 - 11:00"
+  status           String   @default("CONFIRMED") // CONFIRMED, COMPLETED, CANCELLED
+  totalAmount      Decimal  @map("total_amount") @db.Decimal(10, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  vendor           Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  serviceOffering  ServiceOffering @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  
+  @@map("service_bookings")
+}
+
+// ---------------------------------------------------------
+// Module 12: Finance
+// ---------------------------------------------------------
+model VendorWalletTransaction {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  amount          Decimal  @db.Decimal(10, 2)
+  type            String   // CREDIT (Sale), DEBIT (Payout, Refund)
+  reference       String   // Order # or Payout ID
+  description     String
+  balanceAfter    Decimal  @map("balance_after") @db.Decimal(10, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  @@map("vendor_wallet_transactions")
+}
+
+model VendorInvoice {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  orderId         Int      @map("order_id")
+  invoiceNumber   String   @unique @map("invoice_number")
+  amount          Decimal  @db.Decimal(10, 2)
+  taxAmount       Decimal  @map("tax_amount") @db.Decimal(10, 2)
+  status          String   @default("ISSUED") // ISSUED, PAID, VOID
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_invoices")
+}
+
+model VendorCreditNote {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  orderId         Int      @map("order_id")
+  noteNumber      String   @unique @map("note_number")
+  amount          Decimal  @db.Decimal(10, 2)
+  reason          String
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_credit_notes")
+}
+
+// ---------------------------------------------------------
+// Module 13: Marketing
+// ---------------------------------------------------------
+model VendorAdCampaign {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  type            String   // SPONSORED_PRODUCT, BANNER_AD
+  targetProductId Int?     @map("target_product_id")
+  dailyBudget     Decimal  @map("daily_budget") @db.Decimal(10, 2)
+  startDate       DateTime @map("start_date")
+  endDate         DateTime @map("end_date")
+  status          String   @default("ACTIVE") // ACTIVE, PAUSED, COMPLETED
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  @@map("vendor_ad_campaigns")
+}
+
+model VendorFlashSale {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  productId       Int      @map("product_id")
+  discountPercent Decimal  @map("discount_percent") @db.Decimal(5, 2)
+  startTime       DateTime @map("start_time")
+  endTime         DateTime @map("end_time")
+  status          String   @default("SCHEDULED") // SCHEDULED, ACTIVE, ENDED
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_flash_sales")
+}
+
+model VendorEmailCampaign {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  subject         String
+  content         String   @db.Text
+  targetAudience  String   // ALL_CUSTOMERS, REPEAT_CUSTOMERS
+  sentCount       Int      @default(0) @map("sent_count")
+  status          String   @default("DRAFT") // DRAFT, SCHEDULED, SENT
+  scheduledFor    DateTime? @map("scheduled_for")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_email_campaigns")
+}
+
+// ---------------------------------------------------------
+// Module 15: Customer Support
+// ---------------------------------------------------------
+model VendorSupportTicket {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  customerId      Int?     @map("customer_id")
+  orderId         Int?     @map("order_id")
+  subject         String
+  description     String   @db.Text
+  type            String   @default("TICKET") // TICKET, COMPLAINT
+  status          String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  priority        String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order           Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  // user / customer relation would go here if needed
+  
+  @@map("vendor_support_tickets")
+}
+
+model VendorChatMessage {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  senderId        String   // 'VENDOR' or 'CUSTOMER_ID'
+  senderType      String   // VENDOR, CUSTOMER
+  content         String   @db.Text
+  isRead          Boolean  @default(false) @map("is_read")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_chat_messages")
+}
+
+// ---------------------------------------------------------
+// Module 17: Team Management
+// ---------------------------------------------------------
+model VendorActivityLog {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  vendorUserId    Int?     @map("vendor_user_id")
+  action          String
+  details         String?  @db.Text
+  ipAddress       String?  @map("ip_address")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendorUser      VendorUser? @relation(fields: [vendorUserId], references: [id], onDelete: SetNull)
+
+  @@map("vendor_activity_logs")
+}
+
+model VendorLoginHistory {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @map("vendor_id")
+  vendorUserId    Int?     @map("vendor_user_id")
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  status          String   // SUCCESS, FAILED
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendorUser      VendorUser? @relation(fields: [vendorUserId], references: [id], onDelete: SetNull)
+
+  @@map("vendor_login_history")
+}
+
+// ---------------------------------------------------------
+// Module 18: Notifications
+// ---------------------------------------------------------
+model VendorNotificationSetting {
+  id              Int      @id @default(autoincrement())
+  vendorId        Int      @unique @map("vendor_id")
+  
+  // Channels
+  emailEnabled    Boolean  @default(true) @map("email_enabled")
+  smsEnabled      Boolean  @default(false) @map("sms_enabled")
+  pushEnabled     Boolean  @default(true) @map("push_enabled")
+  whatsappEnabled Boolean  @default(false) @map("whatsapp_enabled")
+
+  // Contact Info
+  emailAddress    String?  @map("email_address")
+  phoneNumber     String?  @map("phone_number")
+  whatsappNumber  String?  @map("whatsapp_number")
+
+  // Event Toggles
+  emailEvents     Json     @default("{}") @map("email_events")
+  smsEvents       Json     @default("{}") @map("sms_events")
+  pushEvents      Json     @default("{}") @map("push_events")
+  whatsappEvents  Json     @default("{}") @map("whatsapp_events")
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_notification_settings")
+}
+
+// ---------------------------------------------------------
+// Module 19: Settings
+// ---------------------------------------------------------
+model VendorApiKey {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  name        String
+  keyPrefix   String   @map("key_prefix")
+  secretHash  String   @map("secret_hash")
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  @@map("vendor_api_keys")
+}
+
+model VendorWebhook {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  url         String
+  events      Json     // Array of event names
+  secret      String   // For webhook signature verification
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  @@map("vendor_webhooks")
+}
+
+// ================= PHASE 4 MODELS ================= //
+
+model CustomerReward {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  points    Int
+  reason    String
+  type      String   @default("EARNED") // EARNED, REDEEMED
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("customer_rewards")
+}
+
+model CustomerWalletTransaction {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  amount      Decimal  @db.Decimal(10, 2)
+  type        String   // CREDIT, DEBIT
+  description String
+  status      String   @default("COMPLETED")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("customer_wallet_transactions")
+}
+
+model CustomerNotification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String
+  message   String   @db.Text
+  isRead    Boolean  @default(false) @map("is_read")
+  type      String   @default("SYSTEM") // ORDER, PROMO, SYSTEM
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("customer_notifications")
+}
+
+model CustomerNotificationSetting {
+  id            Int     @id @default(autoincrement())
+  userId        Int     @unique @map("user_id")
+  emailAlerts   Boolean @default(true) @map("email_alerts")
+  smsAlerts     Boolean @default(false) @map("sms_alerts")
+  pushAlerts    Boolean @default(true) @map("push_alerts")
+  promoEmails   Boolean @default(true) @map("promo_emails")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("customer_notification_settings")
+}
+
+// ================= PHASE 6: SUPPORT ================= //
+
+model SupportTicket {
+  id          Int      @id @default(autoincrement())
+  userId      Int?     @map("user_id")
+  name        String
+  email       String
+  subject     String
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  category    String   @default("GENERAL") // ORDER, PAYMENT, PRODUCT, DELIVERY, GENERAL
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages SupportMessage[]
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int      @map("ticket_id")
+  senderType String  @default("CUSTOMER") // CUSTOMER, AGENT
+  senderName String  @map("sender_name")
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  @@map("support_messages")
+}
+
+model Faq {
+  id        Int      @id @default(autoincrement())
+  question  String
+  answer    String   @db.Text
+  category  String   @default("GENERAL")
+  order     Int      @default(0)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("faqs")
+}
+
+model ChatSession {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  visitorId String?  @map("visitor_id")
+  name      String
+  email     String
+  status    String   @default("WAITING") // WAITING, ACTIVE, CLOSED
+  messages  Json     @default("[]") // Array of {role,content,ts}
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@map("chat_sessions")
+}
+
+model ContactInquiry {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String   @db.Text
+  status    String   @default("NEW") // NEW, READ, REPLIED
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("contact_inquiries")
+}
+
+// ================= PHASE 7: CONTENT & SYSTEM ================= //
+
+model PageContent {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique // e.g., 'privacy-policy', 'terms', 'about'
+  title     String
+  content   String   @db.LongText
+  isActive  Boolean  @default(true) @map("is_active")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("page_contents")
+}

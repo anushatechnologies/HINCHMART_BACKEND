@@ -1,0 +1,66 @@
+name: Backend CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js 22.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x'
+        cache: 'npm'
+        cache-dependency-path: './package-lock.json'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    # - name: Run Linter (Optional)
+    #   run: npm run lint
+
+    # - name: Run Tests (Optional)
+    #   run: npm test
+
+  deploy:
+    name: Deploy to Production Server
+    needs: build-and-test
+    # Only run deploy on push to main (not on PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Deploy via SSH & PM2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          cd /path/to/your/project/hinchmart-backend
+          
+          # Pull latest changes from GitHub
+          git pull origin main
+          
+          # Install dependencies securely
+          npm ci
+          
+          # Apply database migrations & generate client
+          npx prisma generate
+          npx prisma db push --accept-data-loss
+          
+          # Restart the PM2 process (assuming the backend is running under PM2)
+          # Replace 'hinchmart-api' with your actual pm2 process name
+          pm2 restart hinchmart-api
