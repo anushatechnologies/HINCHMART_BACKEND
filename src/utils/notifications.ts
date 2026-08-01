@@ -89,7 +89,7 @@ export const sendPushToUser = async (userId: number, title: string, body: string
  * but backend logging is included here.
  */
 export class NotificationService {
-  static async sendOrderConfirmation(email: string, phone: string, orderNumber: string, totalAmount: number, trackingUrl: string) {
+  static async sendOrderConfirmation(email: string, phone: string, orderNumber: string, totalAmount: number, trackingUrl?: string) {
     console.log(`[Notification] Order Confirmation for ${orderNumber} to ${email}`);
     // Implementation for SES send email can be added here
   }
