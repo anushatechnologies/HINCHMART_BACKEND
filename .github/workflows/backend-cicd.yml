@@ -44,12 +44,18 @@ jobs:
     steps:
     - name: Deploy via SSH & PM2
       uses: appleboy/ssh-action@v1.0.3
+      env:
+        ENV_FILE: ${{ secrets.ENV_FILE }}
       with:
         host: ${{ secrets.SERVER_IP }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
+        envs: ENV_FILE
         script: |
           cd /path/to/your/project/hinchmart-backend
+          
+          # Write the environment variables from GitHub Secrets to the .env file
+          echo "$ENV_FILE" > .env
           
           # Pull latest changes from GitHub
           git pull origin main
