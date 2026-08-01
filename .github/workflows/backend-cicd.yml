@@ -71,6 +71,9 @@ jobs:
           npx prisma generate
           npx prisma db push --accept-data-loss
           
-          # Restart the PM2 process (assuming the backend is running under PM2)
-          # Replace 'hinchmart-api' with your actual pm2 process name
-          pm2 restart hinchmart-api
+          # Compile the TypeScript code
+          npx tsc
+          
+          # Restart the PM2 process gracefully, or start it if it doesn't exist
+          pm2 restart hinchmart-api || pm2 start dist/server.js --name "hinchmart-api"
+          pm2 save
