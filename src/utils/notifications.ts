@@ -1,4 +1,4 @@
-import admin from './firebase';
+import { getMessaging } from 'firebase-admin/messaging';
 import prisma from './prisma';
 
 /**
@@ -21,7 +21,7 @@ export const sendMulticastPush = async (tokens: string[], title: string, body: s
   };
 
   try {
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const response = await getMessaging().sendEachForMulticast(message);
     console.log(`[FCM] Successfully sent message. Success count: ${response.successCount}, Failure count: ${response.failureCount}`);
   } catch (error) {
     console.error('[FCM] Error sending multicast push notification:', error);
@@ -82,3 +82,20 @@ export const sendPushToUser = async (userId: number, title: string, body: string
     console.error(`[FCM] Error fetching user ${userId} tokens:`, error);
   }
 };
+
+/**
+ * Service to handle Email and SMS notifications for orders/shipping.
+ * Uses AWS SES for email. SMS via Firebase is handled client-side primarily, 
+ * but backend logging is included here.
+ */
+export class NotificationService {
+  static async sendOrderConfirmation(email: string, phone: string, orderNumber: string, totalAmount: number, trackingUrl: string) {
+    console.log(`[Notification] Order Confirmation for ${orderNumber} to ${email}`);
+    // Implementation for SES send email can be added here
+  }
+
+  static async sendShippingUpdate(email: string, phone: string, orderNumber: string, status: string) {
+    console.log(`[Notification] Shipping Update for ${orderNumber}: ${status} to ${email}`);
+    // Implementation for SES send email can be added here
+  }
+}
