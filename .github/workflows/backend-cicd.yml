@@ -46,16 +46,20 @@ jobs:
       uses: appleboy/ssh-action@v1.0.3
       env:
         ENV_FILE: ${{ secrets.ENV_FILE }}
+        FIREBASE_JSON: ${{ secrets.FIREBASE_JSON }}
       with:
         host: ${{ secrets.SERVER_IP }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
-        envs: ENV_FILE
+        envs: ENV_FILE,FIREBASE_JSON
         script: |
           cd /path/to/your/project/hinchmart-backend
           
           # Write the environment variables from GitHub Secrets to the .env file
           echo "$ENV_FILE" > .env
+          
+          # Write the Firebase Admin SDK credentials from GitHub Secrets
+          echo "$FIREBASE_JSON" > serviceAccountKey.json
           
           # Pull latest changes from GitHub
           git pull origin main
