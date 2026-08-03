@@ -72,8 +72,7 @@ jobs:
           npx prisma generate
           npx prisma db push --accept-data-loss
           
-          # Compile the TypeScript code
-          npx tsc
+          # (npx tsc removed because dist folder is already pushed to GitHub)
           
           # Restart the PM2 process gracefully, or start it if it doesn't exist
           pm2 restart hinchmart-api || pm2 start dist/server.js --name "hinchmart-api"
