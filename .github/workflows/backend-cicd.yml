@@ -51,6 +51,7 @@ jobs:
         host: ${{ secrets.SERVER_IP }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
+        command_timeout: 30m
         envs: ENV_FILE,FIREBASE_JSON
         script: |
           cd /home/ec2-user/project/hinchmart-backend

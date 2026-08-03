@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../../utils/prisma';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { auth } from '../../utils/firebase';
 
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'secret123';
 
@@ -61,11 +62,12 @@ export const registerVendor = async (req: Request, res: Response): Promise<void>
       gstin, 
       panNumber,
       aadhaarNumber,
-      cinNumber
+      cinNumber,
+      firebasePhoneToken // Passed from frontend after successful Firebase Phone Auth
     } = req.body;
 
-    if (!companyName || !contactEmail || !contactPhone || !password) {
-      res.status(400).json({ success: false, message: 'Missing required fields' });
+    if (!companyName || !contactEmail || !contactPhone || !password || !firebasePhoneToken) {
+      res.status(400).json({ success: false, message: 'Missing required fields or phone token' });
       return;
     }
 
@@ -84,16 +86,27 @@ export const registerVendor = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // ENFORCE OTP VERIFICATION
+    // ENFORCE EMAIL OTP VERIFICATION (From Database)
     const verifiedEmail = await prisma.otp.findFirst({
       where: { target: contactEmail, type: 'EMAIL', verified: true }
     });
-    const verifiedPhone = await prisma.otp.findFirst({
-      where: { target: contactPhone, type: 'PHONE', verified: true }
-    });
 
-    if (!verifiedEmail || !verifiedPhone) {
-      res.status(400).json({ success: false, message: 'Both Email and Phone Number must be verified via OTP' });
+    if (!verifiedEmail) {
+      res.status(400).json({ success: false, message: 'Email must be verified via OTP' });
+      return;
+    }
+
+    // ENFORCE PHONE VERIFICATION (via Firebase Token)
+    try {
+      const decodedToken = await auth.verifyIdToken(firebasePhoneToken);
+      // Firebase phone numbers include the country code (+91XXXXXXXXXX)
+      // Our DB might store it with or without +91. Let's do a loose inclusion check or exact match
+      if (!decodedToken.phone_number || !decodedToken.phone_number.includes(contactPhone)) {
+        res.status(400).json({ success: false, message: 'Firebase token phone number does not match registered phone number' });
+        return;
+      }
+    } catch (firebaseError: any) {
+      res.status(401).json({ success: false, message: 'Invalid or expired Firebase phone token', error: firebaseError.message });
       return;
     }
 

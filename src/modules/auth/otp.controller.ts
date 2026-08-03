@@ -2,14 +2,16 @@ import { Request, Response } from 'express';
 import prisma from '../../utils/prisma';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 
-// Initialize SES Client
-const sesClient = new SESClient({
+// Initialize AWS SES Client
+const awsConfig = {
   region: process.env.AWS_REGION || 'ap-south-1',
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
   }
-});
+};
+
+const sesClient = new SESClient(awsConfig);
 
 const sendEmailOTP = async (email: string, otp: string) => {
   // If AWS keys are not set, skip actual sending to avoid crashes during local dev
@@ -53,8 +55,9 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const { target, type } = req.body;
     
-    if (!target || !type) {
-      res.status(400).json({ success: false, message: 'Target and type (EMAIL or PHONE) are required' });
+    // We only handle EMAIL here now. PHONE is handled by Firebase Client SDK.
+    if (!target || type !== 'EMAIL') {
+      res.status(400).json({ success: false, message: 'Only EMAIL OTPs are supported via this endpoint' });
       return;
     }
 
@@ -64,29 +67,23 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
     expiresAt.setMinutes(expiresAt.getMinutes() + 10);
 
     await prisma.otp.updateMany({
-      where: { target, type, verified: false },
+      where: { target, type: 'EMAIL', verified: false },
       data: { verified: true }
     });
     
     await prisma.otp.deleteMany({
-      where: { target, type, verified: false }
+      where: { target, type: 'EMAIL', verified: false }
     });
 
     await prisma.otp.create({
-      data: { target, type, otp, expiresAt }
+      data: { target, type: 'EMAIL', otp, expiresAt }
     });
 
-    // Send via AWS if EMAIL
-    if (type === 'EMAIL') {
-      await sendEmailOTP(target, otp);
-    } else {
-      // Mock SMS for now, or you can integrate AWS SNS / MSG91 here
-      console.log(`[MOCK SMS] Sending OTP ${otp} to PHONE: ${target}`);
-    }
+    await sendEmailOTP(target, otp);
 
     res.status(200).json({ 
       success: true, 
-      message: `OTP sent successfully.`,
+      message: `Email OTP sent successfully.`,
       mockOtp: otp // Still returning for easier local development
     });
   } catch (error: any) {
@@ -99,8 +96,9 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const { target, type, otp } = req.body;
 
-    if (!target || !type || !otp) {
-      res.status(400).json({ success: false, message: 'Target, type, and OTP are required' });
+    // We only verify EMAIL here now.
+    if (!target || type !== 'EMAIL' || !otp) {
+      res.status(400).json({ success: false, message: 'Target, type=EMAIL, and OTP are required' });
       return;
     }
 
