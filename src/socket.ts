@@ -7,8 +7,11 @@ let io: Server;
 export const initSocket = (server: HttpServer) => {
   io = new Server(server, {
     cors: {
-      origin: '*', // Allow all origins for MVP
+      origin: process.env.CORS_ORIGIN 
+        ? process.env.CORS_ORIGIN.split(',').map(url => url.trim())
+        : '*',
       methods: ['GET', 'POST'],
+      credentials: true
     },
   });
 

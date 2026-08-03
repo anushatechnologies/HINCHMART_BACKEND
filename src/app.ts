@@ -74,7 +74,25 @@ const authLimiter = rateLimit({
 });
 
 // Middleware
-app.use(cors());
+// Configure CORS to use environment variable or fallback to allow all (for development)
+const corsOptions = {
+  origin: function (origin: any, callback: any) {
+    if (!origin) return callback(null, true);
+    
+    if (process.env.CORS_ORIGIN) {
+      const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(url => url.trim());
+      if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    } else {
+      callback(null, true); // Fallback if CORS_ORIGIN is not set
+    }
+  },
+  credentials: true
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
