@@ -65,8 +65,8 @@ jobs:
           # Pull latest changes from GitHub
           git pull origin main
           
-          # Install dependencies securely
-          npm ci
+          # Install only production dependencies (much faster and uses less RAM than npm ci)
+          npm install --omit=dev
           
           # Apply database migrations & generate client
           npx prisma generate
