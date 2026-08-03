@@ -72,7 +72,27 @@ const authLimiter = (0, express_rate_limit_1.default)({
     message: { success: false, message: 'Too many authentication attempts, please try again after a minute' }
 });
 // Middleware
-app.use((0, cors_1.default)());
+// Configure CORS to use environment variable or fallback to allow all (for development)
+const corsOptions = {
+    origin: function (origin, callback) {
+        if (!origin)
+            return callback(null, true);
+        if (process.env.CORS_ORIGIN) {
+            const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(url => url.trim());
+            if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+                callback(null, true);
+            }
+            else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        }
+        else {
+            callback(null, true); // Fallback if CORS_ORIGIN is not set
+        }
+    },
+    credentials: true
+};
+app.use((0, cors_1.default)(corsOptions));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 // Serve uploaded static files

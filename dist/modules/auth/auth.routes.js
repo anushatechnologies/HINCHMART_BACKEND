@@ -9,5 +9,7 @@ router.post('/verify-firebase', auth_controller_1.verifyFirebaseToken);
 // Custom OTP (Email/Phone)
 router.post('/send-otp', otp_controller_1.sendOtp);
 router.post('/verify-otp', otp_controller_1.verifyOtp);
+// Standard Registration
+router.post('/register', auth_controller_1.register);
 exports.default = router;
 //# sourceMappingURL=auth.routes.js.map

@@ -25,6 +25,7 @@ const vendor_analytics_controller_1 = require("./vendor-analytics.controller");
 const vendor_notifications_controller_1 = require("./vendor-notifications.controller");
 const vendor_settings_controller_1 = require("./vendor-settings.controller");
 const vendor_ai_controller_1 = require("./vendor-ai.controller");
+const vendor_kyc_controller_1 = require("./vendor-kyc.controller");
 const router = (0, express_1.Router)();
 // ─── Module 1: Auth ───────────────────────────────────────────────────────────
 router.post('/register', vendors_controller_1.registerVendor);
@@ -170,6 +171,12 @@ router.post('/', vendors_controller_1.createVendor);
 router.put('/:id/profile', vendors_controller_1.updateVendorProfile);
 router.patch('/:id/onboarding', vendors_controller_1.updateOnboardingProgress);
 router.patch('/:id/status', vendors_controller_1.updateVendorStatus);
+router.patch('/:id/kyc-status', vendors_controller_1.updateVendorKycStatus);
 router.delete('/:id', vendors_controller_1.deleteVendor);
+// ─── KYC Verification ─────────────────────────────────────────────────────────
+router.post('/:id/kyc/verify-gst', vendor_kyc_controller_1.verifyGst);
+router.post('/:id/kyc/verify-pan', vendor_kyc_controller_1.verifyPan);
+router.post('/:id/kyc/penny-drop', vendor_kyc_controller_1.verifyBankAccount);
+router.post('/:id/kyc/submit', vendor_kyc_controller_1.submitKyc);
 exports.default = router;
 //# sourceMappingURL=vendors.routes.js.map

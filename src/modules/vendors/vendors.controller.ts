@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../../utils/prisma';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { auth } from '../../utils/firebase';
+import { auth as firebaseAuth } from '../../utils/firebase';
 
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'secret123';
 
@@ -98,7 +98,7 @@ export const registerVendor = async (req: Request, res: Response): Promise<void>
 
     // ENFORCE PHONE VERIFICATION (via Firebase Token)
     try {
-      const decodedToken = await auth.verifyIdToken(firebasePhoneToken);
+      const decodedToken = await firebaseAuth.verifyIdToken(firebasePhoneToken);
       // Firebase phone numbers include the country code (+91XXXXXXXXXX)
       // Our DB might store it with or without +91. Let's do a loose inclusion check or exact match
       if (!decodedToken.phone_number || !decodedToken.phone_number.includes(contactPhone)) {
@@ -189,22 +189,40 @@ export const loginVendor = async (req: Request, res: Response): Promise<void> =>
 
 export const updateVendorStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const { id } = req.params;
     const { status } = req.body;
-
+    
     if (!status) {
-       res.status(400).json({ success: false, message: 'Status is required' });
-       return;
+      res.status(400).json({ success: false, message: 'Status is required' });
+      return;
     }
-
+    
     const vendor = await prisma.vendor.update({
-      where: { id },
-      data: { status }
+      where: { id: parseInt(id) },
+      data: { status },
     });
-
-    res.status(200).json({ success: true, message: 'Vendor status updated', data: vendor });
+    
+    res.json({ success: true, message: 'Vendor status updated successfully', data: vendor });
   } catch (error: any) {
+    console.error('Error updating vendor status:', error);
     res.status(500).json({ success: false, message: 'Failed to update vendor status', error: error.message });
+  }
+};
+
+export const updateVendorKycStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { kycStatus, kycRejectionReason } = req.body;
+    
+    const vendor = await prisma.vendor.update({
+      where: { id: parseInt(id) },
+      data: { kycStatus, kycRejectionReason },
+    });
+    
+    res.json({ success: true, message: 'Vendor KYC status updated successfully', data: vendor });
+  } catch (error: any) {
+    console.error('Error updating vendor KYC status:', error);
+    res.status(500).json({ success: false, message: 'Failed to update vendor KYC status', error: error.message });
   }
 };
 
@@ -366,5 +384,70 @@ export const updateOnboardingProgress = async (req: Request, res: Response): Pro
     res.status(200).json({ success: true, message: 'Onboarding progress saved', data: vendorData });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Failed to save onboarding progress', error: error.message });
+  }
+};
+
+export const verifyFirebaseVendor = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, name, email } = req.body;
+
+    if (!token) {
+      res.status(400).json({ success: false, message: 'Firebase token is required' });
+      return;
+    }
+
+    const decodedToken = await firebaseAuth.verifyIdToken(token);
+    const { uid, phone_number, email: firebaseEmail } = decodedToken;
+
+    if (!phone_number && !firebaseEmail) {
+      res.status(400).json({ success: false, message: 'Phone number or Email is required from Firebase' });
+      return;
+    }
+
+    const primaryEmail = email || firebaseEmail;
+    
+    let vendor = await prisma.vendor.findFirst({
+      where: phone_number 
+        ? { contactPhone: phone_number.replace('+91', '') } 
+        : { contactEmail: primaryEmail }
+    });
+
+    if (!vendor) {
+      // Create a basic vendor record for new social logins
+      const passwordHash = await bcrypt.hash(uid, 10);
+      vendor = await prisma.vendor.create({
+        data: {
+          companyName: name || `Vendor-${uid.slice(0,6)}`,
+          contactPhone: phone_number ? phone_number.replace('+91', '') : `no-phone-${uid}`,
+          contactEmail: primaryEmail || null,
+          passwordHash: passwordHash,
+          status: 'PENDING',
+          kycStatus: 'PENDING'
+        }
+      });
+    }
+
+    const jwtToken = jwt.sign(
+      { id: vendor.id, role: 'VENDOR' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Vendor authentication successful',
+      token: jwtToken,
+      data: {
+        id: vendor.id,
+        companyName: vendor.companyName,
+        email: vendor.contactEmail,
+        phone: vendor.contactPhone,
+        status: vendor.status
+      }
+    });
+
+  } catch (error) {
+    console.error('Firebase Auth Error:', error);
+    res.status(401).json({ success: false, message: 'Invalid or expired Firebase token' });
   }
 };

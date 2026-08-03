@@ -20,7 +20,7 @@ const sendEmailOTP = async (email: string, otp: string) => {
     return;
   }
 
-  const senderEmail = process.env.AWS_SES_SENDER_EMAIL || 'noreply@hinchmart.com';
+  const senderEmail = process.env.AWS_SES_SENDER_EMAIL || 'support@hinchmart.com';
 
   const params = {
     Destination: { ToAddresses: [email] },

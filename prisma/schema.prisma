@@ -267,6 +267,13 @@ model Vendor {
   commissionRate Decimal @default(10.00) @map("commission_rate") @db.Decimal(5, 2)
   status       String  @default("PENDING") // PENDING, APPROVED, REJECTED
   kycStatus    String  @default("PENDING") @map("kyc_status") // PENDING, VERIFIED, REJECTED
+  kycRejectionReason String? @map("kyc_rejection_reason") @db.Text
+  msmeNumber   String? @map("msme_number")
+  gstVerified  Boolean @default(false) @map("gst_verified")
+  panVerified  Boolean @default(false) @map("pan_verified")
+  bankPennyDropStatus String @default("PENDING") @map("bank_penny_drop_status") // PENDING, VERIFIED, FAILED
+  businessAddress String? @map("business_address") @db.Text
+  documentExpiries Json? @map("document_expiries")
   createdAt    DateTime @default(now()) @map("created_at")
 
   products       Product[]

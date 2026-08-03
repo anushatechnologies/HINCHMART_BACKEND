@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateOnboardingProgress = exports.resetPassword = exports.forgotPassword = exports.verifyOtp = exports.updateVendorProfile = exports.deleteVendor = exports.updateVendorStatus = exports.loginVendor = exports.registerVendor = exports.createVendor = exports.getVendors = void 0;
+exports.updateOnboardingProgress = exports.resetPassword = exports.forgotPassword = exports.verifyOtp = exports.updateVendorProfile = exports.deleteVendor = exports.updateVendorKycStatus = exports.updateVendorStatus = exports.loginVendor = exports.registerVendor = exports.createVendor = exports.getVendors = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -158,23 +158,40 @@ const loginVendor = async (req, res) => {
 exports.loginVendor = loginVendor;
 const updateVendorStatus = async (req, res) => {
     try {
-        const id = parseInt(req.params.id, 10);
+        const { id } = req.params;
         const { status } = req.body;
         if (!status) {
             res.status(400).json({ success: false, message: 'Status is required' });
             return;
         }
         const vendor = await prisma_1.default.vendor.update({
-            where: { id },
-            data: { status }
+            where: { id: parseInt(id) },
+            data: { status },
         });
-        res.status(200).json({ success: true, message: 'Vendor status updated', data: vendor });
+        res.json({ success: true, message: 'Vendor status updated successfully', data: vendor });
     }
     catch (error) {
+        console.error('Error updating vendor status:', error);
         res.status(500).json({ success: false, message: 'Failed to update vendor status', error: error.message });
     }
 };
 exports.updateVendorStatus = updateVendorStatus;
+const updateVendorKycStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { kycStatus, kycRejectionReason } = req.body;
+        const vendor = await prisma_1.default.vendor.update({
+            where: { id: parseInt(id) },
+            data: { kycStatus, kycRejectionReason },
+        });
+        res.json({ success: true, message: 'Vendor KYC status updated successfully', data: vendor });
+    }
+    catch (error) {
+        console.error('Error updating vendor KYC status:', error);
+        res.status(500).json({ success: false, message: 'Failed to update vendor KYC status', error: error.message });
+    }
+};
+exports.updateVendorKycStatus = updateVendorKycStatus;
 const deleteVendor = async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);

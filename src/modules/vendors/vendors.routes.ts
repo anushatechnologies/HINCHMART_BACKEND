@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getVendors, createVendor, updateVendorStatus, deleteVendor, registerVendor, loginVendor, updateVendorProfile, verifyOtp, forgotPassword, resetPassword, updateOnboardingProgress } from './vendors.controller';
+import { getVendors, createVendor, updateVendorStatus, updateVendorKycStatus, deleteVendor, registerVendor, loginVendor, verifyFirebaseVendor, updateVendorProfile, verifyOtp, forgotPassword, resetPassword, updateOnboardingProgress } from './vendors.controller';
 import { getStoreProfile, updateStoreProfile } from './vendor-store.controller';
 import { getDashboardHome, getSalesDashboard, getAnalyticsDashboard } from './vendor-dashboard.controller';
 import { getVendorOrders, updateOrderItemStatus } from './vendor-orders.controller';
@@ -60,12 +60,14 @@ import { getAnalyticsOverview } from './vendor-analytics.controller';
 import { getNotificationSettings, updateNotificationSettings } from './vendor-notifications.controller';
 import { getSettings, updateSettings, createApiKey, deleteApiKey, createWebhook, deleteWebhook } from './vendor-settings.controller';
 import { generateContent, analyzePricing, generateForecast, chatAssistant } from './vendor-ai.controller';
+import { verifyGst, verifyPan, verifyBankAccount, submitKyc } from './vendor-kyc.controller';
 
 const router = Router();
 
 // ─── Module 1: Auth ───────────────────────────────────────────────────────────
 router.post('/register', registerVendor);
 router.post('/login', loginVendor);
+router.post('/verify-firebase', verifyFirebaseVendor);
 router.post('/verify-otp', verifyOtp);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
@@ -231,6 +233,13 @@ router.post('/', createVendor);
 router.put('/:id/profile', updateVendorProfile);
 router.patch('/:id/onboarding', updateOnboardingProgress);
 router.patch('/:id/status', updateVendorStatus);
+router.patch('/:id/kyc-status', updateVendorKycStatus);
 router.delete('/:id', deleteVendor);
+
+// ─── KYC Verification ─────────────────────────────────────────────────────────
+router.post('/:id/kyc/verify-gst', verifyGst);
+router.post('/:id/kyc/verify-pan', verifyPan);
+router.post('/:id/kyc/penny-drop', verifyBankAccount);
+router.post('/:id/kyc/submit', submitKyc);
 
 export default router;

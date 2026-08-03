@@ -10,8 +10,11 @@ let io;
 const initSocket = (server) => {
     io = new socket_io_1.Server(server, {
         cors: {
-            origin: '*', // Allow all origins for MVP
+            origin: process.env.CORS_ORIGIN
+                ? process.env.CORS_ORIGIN.split(',').map(url => url.trim())
+                : '*',
             methods: ['GET', 'POST'],
+            credentials: true
         },
     });
     io.on('connection', (socket) => {
