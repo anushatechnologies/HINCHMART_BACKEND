@@ -8,6 +8,7 @@ router.get('/testimonials', getTestimonials);
 router.get('/blogs', getBlogs);
 router.get('/deals', getActiveDeals);
 router.get('/privacy-policy', getPrivacyPolicy);
+router.get('/privacy-policies', getPrivacyPolicy); // Added alias as requested
 
 // Legal & Corporate Pages
 router.get('/pages/:slug', getPageContent);

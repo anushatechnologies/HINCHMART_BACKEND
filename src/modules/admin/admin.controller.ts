@@ -196,3 +196,103 @@ export const triggerErpSync = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const getWalletTransactions = async (req: Request, res: Response) => {
+  try {
+    const transactions = await prisma.customerWalletTransaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { companyName: true, name: true, id: true, companyId: true } }
+      }
+    });
+
+    const mapped = transactions.map(t => ({
+      id: `WTX-${t.id}`,
+      originalId: t.id,
+      user: t.user?.companyName || t.user?.name || 'Unknown User',
+      userId: t.userId,
+      companyId: t.user?.companyId,
+      type: t.type,
+      amount: Number(t.amount),
+      // We will mock balance calculation for this response
+      balance: t.status === 'COMPLETED' ? Number(t.amount) : 0, 
+      date: t.createdAt.toISOString(),
+      status: t.status
+    }));
+
+    res.json({ success: true, data: mapped });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const approveWalletTransaction = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // format is WTX-123 or just 123
+    const actualId = parseInt(id.replace('WTX-', ''));
+
+    const transaction = await prisma.customerWalletTransaction.findUnique({
+      where: { id: actualId },
+      include: { user: true }
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    if (transaction.status === 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Transaction already completed' });
+    }
+
+    // Update transaction to COMPLETED
+    await prisma.customerWalletTransaction.update({
+      where: { id: actualId },
+      data: { status: 'COMPLETED' }
+    });
+
+    // If B2B Corporate Credit, we can update Company availableCredit too
+    if (transaction.user?.companyId && transaction.type === 'CREDIT') {
+      await prisma.company.update({
+        where: { id: transaction.user.companyId },
+        data: { availableCredit: { increment: transaction.amount } }
+      });
+    }
+
+    res.json({ success: true, message: 'Transaction approved successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getSystemMetrics = async (req: Request, res: Response) => {
+  try {
+    const [totalVendors, totalProducts, totalOrders, totalUsers] = await Promise.all([
+      prisma.vendor.count(),
+      prisma.product.count(),
+      prisma.order.count(),
+      prisma.user.count()
+    ]);
+
+    const memory = process.memoryUsage();
+
+    res.json({
+      success: true,
+      data: {
+        system: {
+          uptimeSeconds: Math.floor(process.uptime()),
+          nodeVersion: process.version,
+          memoryHeapMB: Math.round((memory.heapUsed / 1024 / 1024) * 100) / 100,
+          memoryRssMB: Math.round((memory.rss / 1024 / 1024) * 100) / 100,
+        },
+        platform: {
+          totalVendors,
+          totalProducts,
+          totalOrders,
+          totalUsers
+        }
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

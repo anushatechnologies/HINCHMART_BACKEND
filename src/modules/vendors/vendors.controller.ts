@@ -442,7 +442,9 @@ export const verifyFirebaseVendor = async (req: Request, res: Response): Promise
         companyName: vendor.companyName,
         email: vendor.contactEmail,
         phone: vendor.contactPhone,
-        status: vendor.status
+        status: vendor.status,
+        kycStatus: vendor.kycStatus,
+        onboardingStep: vendor.onboardingStep
       }
     });
 

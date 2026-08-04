@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { emitOrderStatusChange } from '../../socket';
 
 const prisma = new PrismaClient();
 
@@ -79,8 +80,12 @@ export const updateOrderItemStatus = async (req: Request, res: Response): Promis
         status,
         ...(trackingNumber && { trackingNumber }),
         ...(courierName && { courierName })
-      }
+      },
+      include: { order: { select: { userId: true } } }
     });
+
+    // Broadcast socket event to real-time clients
+    emitOrderStatusChange(updatedItem.orderId, status, updatedItem.order.userId);
 
     res.status(200).json({
       success: true,

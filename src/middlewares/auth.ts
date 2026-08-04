@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'secret123';
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'secret123';
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -28,6 +28,26 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
 
 // Alias for backward compatibility
 export const authenticate = requireAuth;
+
+export const requireRole = (...roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    requireAuth(req, res, () => {
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Authentication required' });
+      }
+
+      // ADMIN role has full access
+      if (user.role === 'ADMIN' || roles.includes(user.role)) {
+        return next();
+      }
+
+      return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges' });
+    });
+  };
+};
+
+export const requireAdmin = requireRole('ADMIN');
 
 export const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;

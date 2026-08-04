@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../../utils/prisma';
+import { emitRfqQuoteUpdate } from '../../socket';
 
 export const createRfq = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -129,6 +130,9 @@ export const createQuote = async (req: Request, res: Response): Promise<void> =>
       where: { id: rfqId },
       data: { status: 'QUOTED' }
     });
+
+    // Broadcast socket event to RFQ room
+    emitRfqQuoteUpdate(rfqId, quote);
 
     res.status(201).json({ success: true, message: 'Quote generated successfully', data: quote });
   } catch (error: any) {

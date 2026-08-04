@@ -496,6 +496,8 @@ model Review {
   vendorRepliedAt DateTime? @map("vendor_replied_at")
   isReported      Boolean  @default(false) @map("is_reported")
   reportReason    String?  @map("report_reason")
+  sentiment       String   @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE
+  sentimentScore  Decimal  @default(0.0) @map("sentiment_score") @db.Decimal(5, 2)
   createdAt       DateTime @default(now()) @map("created_at")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -512,6 +514,9 @@ model Banner {
   position  String // e.g., HOMEPAGE_TOP
   sortOrder Int     @default(0) @map("sort_order")
   isActive  Boolean @default(true) @map("is_active")
+  views     Int     @default(0)
+  clicks    Int     @default(0)
+  ctr       Decimal @default(0.0) @db.Decimal(5, 2)
 
   @@map("banners")
 }

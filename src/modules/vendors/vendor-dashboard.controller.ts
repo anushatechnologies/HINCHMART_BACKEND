@@ -37,6 +37,30 @@ export const getDashboardHome = async (req: Request, res: Response): Promise<voi
       where: { vendorId, isActive: true }
     });
 
+    // Sparkline Trends (Last 7 Days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentOrderItems = await prisma.orderItem.findMany({
+      where: { vendorId, order: { createdAt: { gte: sevenDaysAgo } } },
+      include: { order: { select: { createdAt: true } } }
+    });
+
+    const revenueSparkline = new Array(7).fill(0);
+    const ordersSparkline = new Array(7).fill(0);
+    const today = new Date();
+
+    recentOrderItems.forEach(item => {
+      const d = item.order.createdAt;
+      const diffDays = Math.floor((today.getTime() - d.getTime()) / (1000 * 3600 * 24));
+      if (diffDays >= 0 && diffDays < 7) {
+        revenueSparkline[6 - diffDays] += Number(item.priceAtPurchase) * item.quantity;
+        ordersSparkline[6 - diffDays] += 1;
+      }
+    });
+
+    const formatSparkline = (arr: number[]) => arr.map(value => ({ value }));
+
     // 2. Recent Orders (unique orders)
     const recentOrdersRaw = await prisma.order.findMany({
       where: { items: { some: { vendorId } } },
@@ -92,6 +116,12 @@ export const getDashboardHome = async (req: Request, res: Response): Promise<voi
           totalOrders: orderIds.size,
           activeProducts,
           pendingOrders
+        },
+        trends: {
+          revenue: formatSparkline(revenueSparkline),
+          orders: formatSparkline(ordersSparkline),
+          products: [{value: activeProducts}], // Flat line for now
+          pending: [{value: pendingOrders}] // Flat line for now
         },
         recentOrders,
         topProducts

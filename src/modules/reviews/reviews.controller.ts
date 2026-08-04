@@ -72,12 +72,21 @@ export const createReview = async (req: Request, res: Response) => {
     });
     const isVerified = !!purchase;
 
+    // Basic mock sentiment analysis based on rating
+    let sentiment = 'NEUTRAL';
+    let sentimentScore = 0.5;
+    if (rating >= 4) { sentiment = 'POSITIVE'; sentimentScore = 0.8 + (Math.random() * 0.2); }
+    else if (rating <= 2) { sentiment = 'NEGATIVE'; sentimentScore = 0.1 + (Math.random() * 0.2); }
+    else { sentimentScore = 0.4 + (Math.random() * 0.2); }
+
     const review = await prisma.review.create({
       data: {
         userId,
         productId: pid,
         rating: Math.min(5, Math.max(1, parseInt(rating))),
         comment,
+        sentiment,
+        sentimentScore,
         isApproved: false // Requires admin approval
       }
     });

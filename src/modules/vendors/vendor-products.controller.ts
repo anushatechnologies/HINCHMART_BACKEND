@@ -161,11 +161,12 @@ export const restoreVendorProduct = async (req: Request, res: Response): Promise
       data: { deletedAt: null }
     });
 
-    res.status(200).json({ success: true, message: 'Product restored' });
+    res.status(200).json({ success: true, message: 'Product restored successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Failed to restore product', error: error.message });
   }
 };
+
 
 export const updateVendorProductInventory = async (req: Request, res: Response): Promise<void> => {
   try {

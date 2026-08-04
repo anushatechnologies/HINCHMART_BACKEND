@@ -24,6 +24,18 @@ export const initSocket = (server: HttpServer) => {
       console.log(`Socket ${socket.id} joined room rfq_${rfqId}`);
     });
 
+    // Join User Room
+    socket.on('join_user_room', (userId: number | string) => {
+      socket.join(`user_${userId}`);
+      console.log(`Socket ${socket.id} joined room user_${userId}`);
+    });
+
+    // Join Vendor Room
+    socket.on('join_vendor_room', (vendorId: number | string) => {
+      socket.join(`vendor_${vendorId}`);
+      console.log(`Socket ${socket.id} joined room vendor_${vendorId}`);
+    });
+
     // Send Message
     socket.on('send_message', async (data: { rfqId: number, senderId: number, senderRole: string, message: string }) => {
       try {
@@ -54,7 +66,29 @@ export const initSocket = (server: HttpServer) => {
 
 export const getIO = () => {
   if (!io) {
-    throw new Error('Socket.io not initialized!');
+    return null;
   }
   return io;
 };
+
+export const emitNotificationToUser = (userId: number, notification: any) => {
+  if (io) {
+    io.to(`user_${userId}`).emit('notification', notification);
+  }
+};
+
+export const emitOrderStatusChange = (orderId: number, status: string, userId?: number) => {
+  if (io) {
+    if (userId) {
+      io.to(`user_${userId}`).emit('order_status_updated', { orderId, status });
+    }
+    io.emit('order_updated', { orderId, status });
+  }
+};
+
+export const emitRfqQuoteUpdate = (rfqId: number, quote: any) => {
+  if (io) {
+    io.to(`rfq_${rfqId}`).emit('rfq_quote_updated', quote);
+  }
+};
+

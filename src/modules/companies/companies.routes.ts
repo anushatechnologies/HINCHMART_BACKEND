@@ -3,6 +3,7 @@ import {
   createCompany, 
   getAllCompaniesAdmin, 
   updateCompanyAdmin, 
+  deleteCompanyAdmin,
   getMyCompany, 
   assignUserToCompany,
   getCompanyContracts,
@@ -23,6 +24,7 @@ router.post('/my-company/users', requireAuth, assignUserToCompany);
 router.post('/admin/companies', requireAuth, createCompany);
 router.get('/admin/companies', requireAuth, getAllCompaniesAdmin);
 router.put('/admin/companies/:id', requireAuth, updateCompanyAdmin);
+router.delete('/admin/companies/:id', requireAuth, deleteCompanyAdmin);
 
 // Admin Contract routes
 router.get('/admin/companies/:id/contracts', requireAuth, getCompanyContracts);

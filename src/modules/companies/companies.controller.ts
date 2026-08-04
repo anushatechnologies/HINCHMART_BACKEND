@@ -218,3 +218,16 @@ export const deleteCompanyContract = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ─── ADMIN: Delete Company ───────────────────────────────────────────────────
+export const deleteCompanyAdmin = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await prisma.company.delete({
+      where: { id: parseInt(id) }
+    });
+    res.json({ success: true, message: 'Company deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

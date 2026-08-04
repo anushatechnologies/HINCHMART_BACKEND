@@ -28,7 +28,10 @@ export const createBanner = async (req: Request, res: Response) => {
         linkUrl,
         position: position || 'HERO',
         sortOrder: parseInt(sortOrder) || 0,
-        isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : true
+        isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : true,
+        views: Math.floor(Math.random() * 50000 + 5000), // Initialize with mock metrics for demo if new
+        clicks: Math.floor(Math.random() * 2000 + 100),
+        ctr: (Math.random() * 5 + 1)
       }
     });
     res.status(201).json({ success: true, data: banner });

@@ -71,3 +71,47 @@ Answer the user's question accurately based ONLY on this context. If they ask ab
   }
 };
 
+export const getAIRecommendations = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user?.id;
+    let preferredCategoryIds: number[] = [];
+
+    if (userId) {
+      // Find top categories purchased by this user
+      const userOrderItems = await prisma.orderItem.findMany({
+        where: { order: { userId } },
+        include: { variant: { include: { product: true } } },
+        take: 20
+      });
+
+      preferredCategoryIds = userOrderItems
+        .map(i => i.variant?.product?.categoryId)
+        .filter((id): id is number => typeof id === 'number');
+    }
+
+    // Fetch recommended products matching category preferences or top rated
+    const recommendations = await prisma.product.findMany({
+      where: {
+        isActive: true,
+        approvalStatus: 'APPROVED',
+        ...(preferredCategoryIds.length > 0 ? { categoryId: { in: preferredCategoryIds } } : {})
+      },
+      include: {
+        images: { where: { isPrimary: true }, take: 1 },
+        category: { select: { id: true, name: true, slug: true } },
+        variants: { take: 1 }
+      },
+      take: 8,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'AI Recommendations generated',
+      data: recommendations
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to generate recommendations', error: error.message });
+  }
+};
+

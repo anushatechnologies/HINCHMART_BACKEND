@@ -42,6 +42,9 @@ import contactRoutes from './modules/contact/contact.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import returnsRoutes from './modules/returns/returns.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
+import healthRoutes from './modules/health/health.routes';
+import auditRoutes from './modules/audit/audit.routes';
+import { cacheMiddleware } from './middlewares/cache';
 import { errorHandler } from './middlewares/errorHandler';
 
 const app: Application = express();
@@ -101,14 +104,14 @@ app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/categories', categoryRoutes);
+app.use('/api/categories', cacheMiddleware(120), categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wishlist', wishlistRoutes);
-app.use('/api/banners', bannerRoutes);
+app.use('/api/banners', cacheMiddleware(120), bannerRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/rfq', rfqRoutes);
 app.use('/api/content', contentRoutes);
@@ -138,6 +141,8 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/returns', returnsRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/health', healthRoutes);
+app.use('/api/admin', auditRoutes);
 
 // Health Check Route
 app.get('/health', (req: Request, res: Response) => {

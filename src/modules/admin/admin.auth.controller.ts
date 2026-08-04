@@ -12,9 +12,10 @@ export const adminLogin = async (req: Request, res: Response) => {
     if (admin) {
       const isMatch = await bcrypt.compare(password, admin.passwordHash);
       if (isMatch) {
+        const secretKey = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'secret123';
         const token = jwt.sign(
-          { id: admin.id, role: 'ADMIN' },
-          process.env.JWT_SECRET || 'secret',
+          { id: admin.id, email: admin.email, role: 'ADMIN' },
+          secretKey,
           { expiresIn: '1d' }
         );
         return res.json({
@@ -34,9 +35,10 @@ export const adminLogin = async (req: Request, res: Response) => {
           return res.status(403).json({ success: false, message: 'Vendor account is suspended or pending approval.' });
         }
         
+        const secretKey = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'secret123';
         const token = jwt.sign(
-          { id: vendor.id, role: 'VENDOR' },
-          process.env.JWT_SECRET || 'secret',
+          { id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' },
+          secretKey,
           { expiresIn: '1d' }
         );
         return res.json({
