@@ -54,6 +54,11 @@ model User {
   supportTickets        SupportTicket[]
   chatSessions          ChatSession[]
 
+  // Phase 12 Relations
+  buyerCreditLines      BuyerCreditLine[]
+  requestedPOApprovals  PurchaseOrderApproval[] @relation("PORequester")
+  approvedPOApprovals   PurchaseOrderApproval[] @relation("POApprover")
+
   @@map("users")
 }
 
@@ -1526,6 +1531,44 @@ model ContactInquiry {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("contact_inquiries")
+}
+
+// ================= PHASE 12: CORPORATE CREDIT & PO APPROVALS ================= //
+
+model BuyerCreditLine {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int?     @map("company_id")
+  userId               Int      @map("user_id")
+  requestedCreditLimit Decimal  @map("requested_credit_limit") @db.Decimal(12, 2)
+  approvedCreditLimit  Decimal  @default(0.00) @map("approved_credit_limit") @db.Decimal(12, 2)
+  usedCreditLimit      Decimal  @default(0.00) @map("used_credit_limit") @db.Decimal(12, 2)
+  paymentTermsDays     Int      @default(30) @map("payment_terms_days")
+  creditStatus         String   @default("PENDING") @map("credit_status")
+  gstin                String?
+  panNumber            String?  @map("pan_number")
+  financialDocUrl      String?  @map("financial_doc_url")
+  adminNotes           String?  @map("admin_notes") @db.Text
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("buyer_credit_lines")
+}
+
+model PurchaseOrderApproval {
+  id            Int      @id @default(autoincrement())
+  poNumber      String   @unique @map("po_number")
+  companyId     Int?     @map("company_id")
+  requesterId   Int      @map("requester_id")
+  approverId    Int?     @map("approver_id")
+  totalAmount   Decimal  @map("total_amount") @db.Decimal(12, 2)
+  status        String   @default("PENDING_APPROVAL")
+  remarks       String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  requester User  @relation("PORequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  approver  User? @relation("POApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  @@map("purchase_order_approvals")
 }
 
 // ================= PHASE 7: CONTENT & SYSTEM ================= //

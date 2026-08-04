@@ -44,6 +44,7 @@ import returnsRoutes from './modules/returns/returns.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import healthRoutes from './modules/health/health.routes';
 import auditRoutes from './modules/audit/audit.routes';
+import creditRoutes from './modules/credit/credit-lines.routes';
 import { cacheMiddleware } from './middlewares/cache';
 import { errorHandler } from './middlewares/errorHandler';
 
@@ -138,6 +139,7 @@ app.use('/api/buying-guides', buyingGuidesRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/faq', faqRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/credit', creditRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/returns', returnsRoutes);
 app.use('/api/analytics', analyticsRoutes);
