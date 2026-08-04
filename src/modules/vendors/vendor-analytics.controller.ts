@@ -16,11 +16,11 @@ export const getAnalyticsOverview = async (req: Request, res: Response): Promise
       where: { vendorId },
       include: { order: true }
     });
-    
+
     let totalGrossRevenue = 0;
     let totalOrders = orderItems.length;
     let completedOrders = 0;
-    
+
     orderItems.forEach(item => {
       if (item.status !== 'CANCELLED' && item.status !== 'RETURNED') {
         const itemTotal = Number(item.priceAtPurchase) * item.quantity;
@@ -28,7 +28,7 @@ export const getAnalyticsOverview = async (req: Request, res: Response): Promise
         completedOrders++;
       }
     });
-    
+
     const aov = completedOrders > 0 ? (totalGrossRevenue / completedOrders) : 0;
     const netProfit = totalGrossRevenue * 0.85; // 15% platform commission
 
@@ -40,7 +40,7 @@ export const getAnalyticsOverview = async (req: Request, res: Response): Promise
 
     let totalInventoryValue = 0;
     let lowStockCount = 0;
-    
+
     products.forEach(p => {
       p.variants.forEach(v => {
         totalInventoryValue += (Number(v.price) * v.stockQty);
