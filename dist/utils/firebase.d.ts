@@ -1,3 +1,3 @@
-export declare const auth: import("firebase-admin/auth").Auth;
-export declare const db: FirebaseFirestore.Firestore;
+export declare const auth: any;
+export declare const db: any;
 //# sourceMappingURL=firebase.d.ts.map
