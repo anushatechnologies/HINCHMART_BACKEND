@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getVendors, createVendor, updateVendorStatus, updateVendorKycStatus, deleteVendor, registerVendor, loginVendor, verifyFirebaseVendor, updateVendorProfile, verifyOtp, forgotPassword, resetPassword, updateOnboardingProgress } from './vendors.controller';
+import { saveOnboardingStep, submitKycForReview, granularSectionReview } from './vendor-onboarding.controller';
 import { getStoreProfile, updateStoreProfile } from './vendor-store.controller';
 import { getDashboardHome, getSalesDashboard, getAnalyticsDashboard } from './vendor-dashboard.controller';
 import { getVendorOrders, updateOrderItemStatus } from './vendor-orders.controller';
@@ -236,7 +237,10 @@ router.patch('/:id/status', updateVendorStatus);
 router.patch('/:id/kyc-status', updateVendorKycStatus);
 router.delete('/:id', deleteVendor);
 
-// ─── KYC Verification ─────────────────────────────────────────────────────────
+// ─── KYC & Staged Onboarding ──────────────────────────────────────────────────
+router.post('/onboarding/step', saveOnboardingStep);
+router.post('/onboarding/submit', submitKycForReview);
+router.patch('/:id/granular-review', granularSectionReview);
 router.post('/:id/kyc/verify-gst', verifyGst);
 router.post('/:id/kyc/verify-pan', verifyPan);
 router.post('/:id/kyc/penny-drop', verifyBankAccount);

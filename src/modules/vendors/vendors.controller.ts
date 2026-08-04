@@ -124,8 +124,10 @@ export const registerVendor = async (req: Request, res: Response): Promise<void>
         panNumber,
         aadhaarNumber,
         cinNumber,
-        status: 'PENDING',
-        kycStatus: 'PENDING'
+        status: 'REGISTERED',
+        kycStatus: 'NOT_STARTED',
+        onboardingProgress: 10,
+        businessInfoStatus: 'PENDING'
       }
     });
 

@@ -274,6 +274,17 @@ model Vendor {
   bankPennyDropStatus String @default("PENDING") @map("bank_penny_drop_status") // PENDING, VERIFIED, FAILED
   businessAddress String? @map("business_address") @db.Text
   documentExpiries Json? @map("document_expiries")
+
+  // Staged Onboarding & Granular Review Fields
+  onboardingProgress     Int     @default(10) @map("onboarding_progress")
+  businessInfoStatus     String  @default("PENDING") @map("business_info_status")
+  gstStatus              String  @default("PENDING") @map("gst_status")
+  panStatus              String  @default("PENDING") @map("pan_status")
+  bankStatus             String  @default("PENDING") @map("bank_status")
+  warehouseStatus        String  @default("PENDING") @map("warehouse_status")
+  docsStatus             String  @default("PENDING") @map("docs_status")
+  sectionRejectionReasons Json?  @map("section_rejection_reasons")
+
   createdAt    DateTime @default(now()) @map("created_at")
 
   products       Product[]
