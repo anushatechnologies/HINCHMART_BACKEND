@@ -11,4 +11,5 @@ export declare const verifyOtp: (req: Request, res: Response) => Promise<void>;
 export declare const forgotPassword: (req: Request, res: Response) => Promise<void>;
 export declare const resetPassword: (req: Request, res: Response) => Promise<void>;
 export declare const updateOnboardingProgress: (req: Request, res: Response) => Promise<void>;
+export declare const verifyFirebaseVendor: (req: Request, res: Response) => Promise<void>;
 //# sourceMappingURL=vendors.controller.d.ts.map

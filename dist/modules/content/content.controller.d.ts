@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+export declare const getPrivacyPolicy: (_req: Request, res: Response) => Promise<void>;
 export declare const getTestimonials: (req: Request, res: Response) => Promise<void>;
 export declare const getBlogs: (req: Request, res: Response) => Promise<void>;
 export declare const getActiveDeals: (req: Request, res: Response) => Promise<void>;

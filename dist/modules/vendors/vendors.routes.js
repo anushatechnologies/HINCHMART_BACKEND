@@ -30,6 +30,7 @@ const router = (0, express_1.Router)();
 // ─── Module 1: Auth ───────────────────────────────────────────────────────────
 router.post('/register', vendors_controller_1.registerVendor);
 router.post('/login', vendors_controller_1.loginVendor);
+router.post('/verify-firebase', vendors_controller_1.verifyFirebaseVendor);
 router.post('/verify-otp', vendors_controller_1.verifyOtp);
 router.post('/forgot-password', vendors_controller_1.forgotPassword);
 router.post('/reset-password', vendors_controller_1.resetPassword);

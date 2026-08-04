@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateOnboardingProgress = exports.resetPassword = exports.forgotPassword = exports.verifyOtp = exports.updateVendorProfile = exports.deleteVendor = exports.updateVendorKycStatus = exports.updateVendorStatus = exports.loginVendor = exports.registerVendor = exports.createVendor = exports.getVendors = void 0;
+exports.verifyFirebaseVendor = exports.updateOnboardingProgress = exports.resetPassword = exports.forgotPassword = exports.verifyOtp = exports.updateVendorProfile = exports.deleteVendor = exports.updateVendorKycStatus = exports.updateVendorStatus = exports.loginVendor = exports.registerVendor = exports.createVendor = exports.getVendors = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -330,4 +330,57 @@ const updateOnboardingProgress = async (req, res) => {
     }
 };
 exports.updateOnboardingProgress = updateOnboardingProgress;
+const verifyFirebaseVendor = async (req, res) => {
+    try {
+        const { token, name, email } = req.body;
+        if (!token) {
+            res.status(400).json({ success: false, message: 'Firebase token is required' });
+            return;
+        }
+        const decodedToken = await firebase_1.auth.verifyIdToken(token);
+        const { uid, phone_number, email: firebaseEmail } = decodedToken;
+        if (!phone_number && !firebaseEmail) {
+            res.status(400).json({ success: false, message: 'Phone number or Email is required from Firebase' });
+            return;
+        }
+        const primaryEmail = email || firebaseEmail;
+        let vendor = await prisma_1.default.vendor.findFirst({
+            where: phone_number
+                ? { contactPhone: phone_number.replace('+91', '') }
+                : { contactEmail: primaryEmail }
+        });
+        if (!vendor) {
+            // Create a basic vendor record for new social logins
+            const passwordHash = await bcrypt_1.default.hash(uid, 10);
+            vendor = await prisma_1.default.vendor.create({
+                data: {
+                    companyName: name || `Vendor-${uid.slice(0, 6)}`,
+                    contactPhone: phone_number ? phone_number.replace('+91', '') : `no-phone-${uid}`,
+                    contactEmail: primaryEmail || null,
+                    passwordHash: passwordHash,
+                    status: 'PENDING',
+                    kycStatus: 'PENDING'
+                }
+            });
+        }
+        const jwtToken = jsonwebtoken_1.default.sign({ id: vendor.id, role: 'VENDOR' }, JWT_SECRET, { expiresIn: '7d' });
+        res.status(200).json({
+            success: true,
+            message: 'Vendor authentication successful',
+            token: jwtToken,
+            data: {
+                id: vendor.id,
+                companyName: vendor.companyName,
+                email: vendor.contactEmail,
+                phone: vendor.contactPhone,
+                status: vendor.status
+            }
+        });
+    }
+    catch (error) {
+        console.error('Firebase Auth Error:', error);
+        res.status(401).json({ success: false, message: 'Invalid or expired Firebase token' });
+    }
+};
+exports.verifyFirebaseVendor = verifyFirebaseVendor;
 //# sourceMappingURL=vendors.controller.js.map

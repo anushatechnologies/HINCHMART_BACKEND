@@ -21,7 +21,7 @@ const sendEmailOTP = async (email, otp) => {
         console.log(`[MOCK AWS SES] Sending OTP ${otp} to EMAIL: ${email}`);
         return;
     }
-    const senderEmail = process.env.AWS_SES_SENDER_EMAIL || 'noreply@hinchmart.com';
+    const senderEmail = process.env.AWS_SES_SENDER_EMAIL || 'support@hinchmart.com';
     const params = {
         Destination: { ToAddresses: [email] },
         Message: {
