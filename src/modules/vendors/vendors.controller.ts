@@ -216,7 +216,11 @@ export const updateVendorKycStatus = async (req: Request, res: Response): Promis
     
     const vendor = await prisma.vendor.update({
       where: { id: parseInt(id) },
-      data: { kycStatus, kycRejectionReason },
+      data: { 
+        kycStatus, 
+        kycRejectionReason,
+        ...(kycStatus === 'VERIFIED' ? { status: 'APPROVED' } : (kycStatus === 'REJECTED' ? { status: 'REJECTED' } : {}))
+      },
     });
     
     res.json({ success: true, message: 'Vendor KYC status updated successfully', data: vendor });
