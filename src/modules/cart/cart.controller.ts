@@ -44,7 +44,7 @@ export const getCart = async (req: Request, res: Response) => {
 export const addItem = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { variantId, productId, quantity } = req.body;
+    const { variantId, productId, quantity, isRental, rentalStart, rentalEnd, operatorRequired } = req.body;
     const reqQty = parseInt(quantity) || 1;
 
     let targetVariantId = variantId ? parseInt(variantId) : null;
@@ -116,7 +116,7 @@ export const addItem = async (req: Request, res: Response) => {
       });
     }
 
-    if (existingItem) {
+    if (existingItem && !isRental) {
       await prisma.cartItem.update({
         where: { id: existingItem.id },
         data: { quantity: newQty }
@@ -126,7 +126,11 @@ export const addItem = async (req: Request, res: Response) => {
         data: {
           cartId: cart.id,
           variantId: targetVariantId,
-          quantity: newQty
+          quantity: isRental ? reqQty : newQty, // Rental quantities don't merge blindly
+          isRental: isRental || false,
+          rentalStart: rentalStart ? new Date(rentalStart) : null,
+          rentalEnd: rentalEnd ? new Date(rentalEnd) : null,
+          operatorRequired: operatorRequired || false
         }
       });
     }

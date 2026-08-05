@@ -5,11 +5,11 @@ const prisma = new PrismaClient();
 
 export const getVendorProducts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const vendorId = parseInt(req.query.vendorId as string, 10);
+    const vendorId = (req as any).user?.id || parseInt(req.query.vendorId as string, 10);
     const status = req.query.status as string; // 'ACTIVE', 'PENDING', 'DELETED'
 
-    if (isNaN(vendorId)) {
-      res.status(400).json({ success: false, message: 'vendorId is required' });
+    if (!vendorId || isNaN(vendorId)) {
+      res.status(401).json({ success: false, message: 'vendorId is required' });
       return;
     }
 
@@ -76,7 +76,8 @@ export const createVendorProduct = async (req: Request, res: Response): Promise<
       countryOfOrigin, warranty, brand
     } = req.body;
 
-    if (!vendorId || !name || !categoryId || !basePrice || !mrp) {
+    const extractedVendorId = vendorId || (req as any).user?.id;
+    if (!extractedVendorId || !name || !categoryId || !basePrice || !mrp) {
       res.status(400).json({ success: false, message: 'Missing required fields' });
       return;
     }
@@ -87,7 +88,7 @@ export const createVendorProduct = async (req: Request, res: Response): Promise<
       data: {
         name, slug, description, basePrice, mrp, brand,
         categoryId: parseInt(categoryId, 10),
-        vendorId: parseInt(vendorId, 10),
+      vendorId: vendorId || (req as any).user?.id,
         moq: moq ? parseInt(moq, 10) : 1,
         gstPercent: gstPercent || 0,
         stockStatus: stockStatus || 'IN_STOCK',
@@ -133,6 +134,79 @@ export const updateVendorProduct = async (req: Request, res: Response): Promise<
     res.status(200).json({ success: true, message: 'Product updated successfully', data: product });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Failed to update product', error: error.message });
+  }
+};
+
+export const createProductDraft = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { vendorId, categoryId, productType } = req.body;
+    if (!vendorId || !categoryId) {
+      res.status(400).json({ success: false, message: 'Missing required fields' });
+      return;
+    }
+
+    const name = "Draft Product " + Date.now();
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+
+    const product = await prisma.product.create({
+      data: {
+        name,
+        slug,
+        categoryId: parseInt(categoryId, 10),
+        vendorId: parseInt(vendorId, 10),
+        productType: productType || 'PHYSICAL',
+        approvalStatus: 'DRAFT',
+        basePrice: 0,
+        mrp: 0,
+        gstPercent: 0,
+      }
+    });
+
+    res.status(201).json({ success: true, message: 'Draft created', data: product });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to create draft', error: error.message });
+  }
+};
+
+export const submitProductForApproval = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    // In a real app, perform validation here to check if all required fields are filled
+
+    const product = await prisma.product.update({
+      where: { id },
+      data: { approvalStatus: 'SUBMITTED' }
+    });
+
+    res.status(200).json({ success: true, message: 'Product submitted for approval', data: product });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to submit product', error: error.message });
+  }
+};
+
+export const updateRentalDetails = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const updates = req.body;
+    
+    // Check if rental details exist
+    const existing = await prisma.rentalDetails.findUnique({ where: { productId: id } });
+    
+    let rentalDetails;
+    if (existing) {
+      rentalDetails = await prisma.rentalDetails.update({
+        where: { productId: id },
+        data: updates
+      });
+    } else {
+      rentalDetails = await prisma.rentalDetails.create({
+        data: { ...updates, productId: id }
+      });
+    }
+
+    res.status(200).json({ success: true, message: 'Rental details updated', data: rentalDetails });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to update rental details', error: error.message });
   }
 };
 

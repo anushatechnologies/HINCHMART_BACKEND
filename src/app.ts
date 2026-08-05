@@ -45,6 +45,7 @@ import analyticsRoutes from './modules/analytics/analytics.routes';
 import healthRoutes from './modules/health/health.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import creditRoutes from './modules/credit/credit-lines.routes';
+import brandsRoutes from './modules/brands/brands.routes';
 import { cacheMiddleware } from './middlewares/cache';
 import { errorHandler } from './middlewares/errorHandler';
 
@@ -103,6 +104,15 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded static files
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
+// Generic Upload Route
+import { upload } from './middlewares/upload';
+app.post('/api/upload', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No file uploaded' });
+  }
+  res.json({ success: true, url: `/uploads/${req.file.filename}` });
+});
+
 // API Routes
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/categories', cacheMiddleware(120), categoryRoutes);
@@ -140,6 +150,7 @@ app.use('/api/support', supportRoutes);
 app.use('/api/faq', faqRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/credit', creditRoutes);
+app.use('/api/brands', brandsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/returns', returnsRoutes);
 app.use('/api/analytics', analyticsRoutes);

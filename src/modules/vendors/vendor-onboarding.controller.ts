@@ -59,6 +59,7 @@ export const saveOnboardingStep = async (req: Request, res: Response): Promise<v
           bankAccountNumber: payload.bankAccountNumber,
           ifscCode: payload.ifscCode,
           bankName: payload.bankName,
+          cancelledChequeUrl: payload.cancelledChequeUrl,
           bankStatus: 'PENDING',
           onboardingProgress: Math.max(progress, 65)
         };
@@ -76,6 +77,12 @@ export const saveOnboardingStep = async (req: Request, res: Response): Promise<v
       case 6: // Documents Upload
         updateData = {
           businessDocUrl: payload.businessDocUrl,
+          gstCertificateUrl: payload.gstCertificateUrl,
+          panCardUrl: payload.panCardUrl,
+          businessRegistrationUrl: payload.businessRegistrationUrl,
+          addressProofUrl: payload.addressProofUrl,
+          msmeCertificateUrl: payload.msmeCertificateUrl,
+          tradeLicenseUrl: payload.tradeLicenseUrl,
           msmeNumber: payload.msmeNumber,
           cinNumber: payload.cinNumber,
           docsStatus: 'PENDING',

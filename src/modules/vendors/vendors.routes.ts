@@ -3,13 +3,14 @@ import { getVendors, createVendor, updateVendorStatus, updateVendorKycStatus, de
 import { saveOnboardingStep, submitKycForReview, granularSectionReview } from './vendor-onboarding.controller';
 import { getStoreProfile, updateStoreProfile } from './vendor-store.controller';
 import { getDashboardHome, getSalesDashboard, getAnalyticsDashboard } from './vendor-dashboard.controller';
-import { getVendorOrders, updateOrderItemStatus } from './vendor-orders.controller';
+import { getVendorOrders, updateOrderItemStatus, generateInvoice } from './vendor-orders.controller';
 import { 
   getFinanceOverview, getWalletLedger, getInvoices, getCreditNotes, getTaxReports 
 } from './vendor-finance.controller';
 import {
   getVendorProducts, getVendorProductById, createVendorProduct,
-  updateVendorProduct, deleteVendorProduct, restoreVendorProduct, updateVendorProductInventory
+  updateVendorProduct, deleteVendorProduct, restoreVendorProduct, updateVendorProductInventory,
+  createProductDraft, submitProductForApproval, updateRentalDetails
 } from './vendor-products.controller';
 import {
   getProductImages, addProductImage, deleteProductImage, setPrimaryImage,
@@ -46,6 +47,7 @@ import {
 } from './vendor-services.controller';
 import { getTeamMembers, inviteTeamMember, createRole, getAuditLogs } from './vendor-team.controller';
 import { getWarehouses, addWarehouse } from './vendor-warehouses.controller';
+import { getVendorBrands, requestNewBrand, requestBrandAccess } from './vendor-brands.controller';
 import {
   getCoupons, createCoupon, getFlashSales, createFlashSale,
   getAdCampaigns, createAdCampaign, getEmailCampaigns, createEmailCampaign
@@ -62,6 +64,7 @@ import { getNotificationSettings, updateNotificationSettings } from './vendor-no
 import { getSettings, updateSettings, createApiKey, deleteApiKey, createWebhook, deleteWebhook } from './vendor-settings.controller';
 import { generateContent, analyzePricing, generateForecast, chatAssistant } from './vendor-ai.controller';
 import { verifyGst, verifyPan, verifyBankAccount, submitKyc } from './vendor-kyc.controller';
+import { requireVendor } from '../../middlewares/auth';
 
 const router = Router();
 
@@ -74,15 +77,19 @@ router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 
 // ─── Module 5: Product Bulk Operations ────────────────────────────────────────
+router.use('/products', requireVendor);
 router.get('/products/export', exportProducts);
 router.get('/products/template', downloadTemplate);
 router.post('/products/import', importProducts);
 
 // ─── Module 5: Products CRUD ─────────────────────────────────────────────────
 router.get('/products', getVendorProducts);
+router.post('/products/draft', createProductDraft); // Must be before /:id
 router.post('/products', createVendorProduct);
 router.get('/products/:id', getVendorProductById);
 router.put('/products/:id', updateVendorProduct);
+router.post('/products/:id/submit', submitProductForApproval);
+router.put('/products/:id/rental', updateRentalDetails);
 router.delete('/products/:id', deleteVendorProduct);
 router.patch('/products/:id/restore', restoreVendorProduct);
 router.patch('/products/:id/inventory', updateVendorProductInventory);
@@ -116,8 +123,9 @@ router.get('/finance/credit-notes', getCreditNotes);
 router.get('/finance/taxes', getTaxReports);
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
-router.get('/orders', getVendorOrders);
-router.patch('/orders/:itemId/status', updateOrderItemStatus);
+router.get('/orders', requireVendor, getVendorOrders);
+router.patch('/orders/:itemId/status', requireVendor, updateOrderItemStatus);
+router.get('/orders/:itemId/invoice', requireVendor, generateInvoice);
 
 // ─── Module 6: Categories & Brands ─────────────────────────────────────────────
 router.get('/:id/categories/requests', getVendorCategoryRequests);
@@ -236,6 +244,11 @@ router.patch('/:id/onboarding', updateOnboardingProgress);
 router.patch('/:id/status', updateVendorStatus);
 router.patch('/:id/kyc-status', updateVendorKycStatus);
 router.delete('/:id', deleteVendor);
+
+// ─── Vendor Brands ────────────────────────────────────────────────────────────
+router.get('/:id/brands', getVendorBrands);
+router.post('/:id/brands/request-new', requestNewBrand);
+router.post('/:id/brands/request-access', requestBrandAccess);
 
 // ─── KYC & Staged Onboarding ──────────────────────────────────────────────────
 router.post('/onboarding/step', saveOnboardingStep);

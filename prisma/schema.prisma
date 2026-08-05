@@ -135,7 +135,9 @@ model Product {
   name        String
   slug        String   @unique
   brand       String?
+  brandId     Int?     @map("brand_id")
   categoryId  Int      @map("category_id")
+  productType String   @default("PHYSICAL") @map("product_type") // PHYSICAL, RENTAL, SERVICE, SPARE_PART
   description String?  @db.Text
   basePrice       Decimal  @map("base_price") @db.Decimal(10, 2)
   mrp             Decimal  @db.Decimal(10, 2)
@@ -166,7 +168,7 @@ model Product {
   isSameDayDelivery Boolean  @default(false) @map("is_same_day_delivery")
 
   // Module 5 Fields
-  approvalStatus    String   @default("APPROVED") @map("approval_status") // PENDING, APPROVED, REJECTED
+  approvalStatus    String   @default("DRAFT") @map("approval_status") // DRAFT, SUBMITTED, UNDER_REVIEW, CHANGES_REQUIRED, APPROVED, LIVE, REJECTED, PAUSED, OUT_OF_STOCK, ARCHIVED
   deletedAt         DateTime? @map("deleted_at")
   metaTitle         String?  @map("meta_title")
   metaDescription   String?  @map("meta_description") @db.Text
@@ -174,6 +176,7 @@ model Product {
 
 
   category      Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brandEntity   Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
   vendor        Vendor?          @relation(fields: [vendorId], references: [id])
   variants      ProductVariant[]
   reviews       Review[]
@@ -189,6 +192,7 @@ model Product {
   relatedFrom   RelatedProduct[] @relation("ProductToRelated")
   relatedTo     RelatedProduct[] @relation("RelatedToProduct")
   rentalDetails RentalDetails?
+  rentalAvailabilities RentalAvailability[]
   flashSales    VendorFlashSale[]
   rentalBookings  RentalBooking[]
   maintenanceRecords MaintenanceRecord[]
@@ -253,8 +257,15 @@ model Vendor {
   bankAccountNumber String? @map("bank_account_number")
   ifscCode          String? @map("ifsc_code")
   bankName          String? @map("bank_name")
+  cancelledChequeUrl String? @map("cancelled_cheque_url")
   pickupAddress     String? @map("pickup_address") @db.Text
-  businessDocUrl    String? @map("business_doc_url")
+  businessDocUrl    String? @map("business_doc_url") // Legacy or generic
+  gstCertificateUrl     String? @map("gst_certificate_url")
+  panCardUrl            String? @map("pan_card_url")
+  businessRegistrationUrl String? @map("business_registration_url")
+  addressProofUrl       String? @map("address_proof_url")
+  msmeCertificateUrl    String? @map("msme_certificate_url")
+  tradeLicenseUrl       String? @map("trade_license_url")
   onboardingStep    Int     @default(1) @map("onboarding_step")
 
   // Business Focus (Added for customized onboarding)
@@ -303,7 +314,8 @@ model Vendor {
   warehouses     VendorWarehouse[]
   returnRequests ReturnRequest[]
   categoryRequests VendorCategoryRequest[]
-  brands           VendorBrand[]
+  brandRequests    VendorBrandRequest[]
+  brandAccess      VendorBrandAccess[]
   inventoryHistory InventoryHistory[]
   couriers         VendorCourier[]
   pickupRequests   PickupRequest[]
@@ -337,6 +349,10 @@ model Vendor {
 
   apiKeys          VendorApiKey[]
   webhooks         VendorWebhook[]
+  
+  // Phase 13 Relations
+  escrowHolds      EscrowHold[]
+  taxCertificates  TaxCertificate[]
 
   @@map("vendors")
 }
@@ -376,6 +392,12 @@ model CartItem {
   cartId    Int @map("cart_id")
   variantId Int @map("variant_id")
   quantity  Int @default(1)
+  
+  // Rental fields
+  isRental         Boolean  @default(false) @map("is_rental")
+  rentalStart      DateTime? @map("rental_start")
+  rentalEnd        DateTime? @map("rental_end")
+  operatorRequired Boolean  @default(false) @map("operator_required")
 
   cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
   variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
@@ -447,6 +469,9 @@ model Order {
   vendorInvoices VendorInvoice[]
   vendorCreditNotes VendorCreditNote[]
   supportTickets VendorSupportTicket[]
+  
+  // Phase 13
+  escrowHolds EscrowHold[]
 
   @@map("orders")
 }
@@ -461,6 +486,12 @@ model OrderItem {
   status          String  @default("PENDING") // PENDING, PACKED, SHIPPED, DELIVERED, CANCELLED, RETURNED
   trackingNumber  String? @map("tracking_number")
   courierName     String? @map("courier_name")
+
+  // Rental fields
+  isRental         Boolean  @default(false) @map("is_rental")
+  rentalStart      DateTime? @map("rental_start")
+  rentalEnd        DateTime? @map("rental_end")
+  operatorRequired Boolean  @default(false) @map("operator_required")
 
   order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
@@ -924,8 +955,10 @@ model VendorWarehouse {
   city       String
   state      String
   pincode    String
-  contactNum String   @map("contact_num")
-  isPrimary  Boolean  @default(false) @map("is_primary")
+  contactNum      String   @map("contact_num")
+  managerName     String?  @map("manager_name")
+  pickupAvailable Boolean  @default(true) @map("pickup_available")
+  isPrimary       Boolean  @default(false) @map("is_primary")
   createdAt  DateTime @default(now()) @map("created_at")
 
   vendor Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -953,19 +986,71 @@ model VendorCategoryRequest {
   @@map("vendor_category_requests")
 }
 
-// Tracks brands a vendor owns or is approved to sell
-model VendorBrand {
-  id         Int      @id @default(autoincrement())
-  vendorId   Int      @map("vendor_id")
-  name       String
-  logoUrl    String?  @map("logo_url")
-  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt  DateTime @default(now()) @map("created_at")
+// ================= BRAND MANAGEMENT (PHASE 2) ================= //
 
-  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+// Global Brand Catalog
+model Brand {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique
+  slug            String   @unique
+  logoUrl         String?  @map("logo_url")
+  description     String?  @db.Text
+  website         String?
+  trademarkNumber String?  @map("trademark_number")
+  country         String?
+  status          String   @default("ACTIVE") // ACTIVE, INACTIVE
+  createdBy       Int?     @map("created_by")
+  approvedBy      Int?     @map("approved_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@unique([vendorId, name])
-  @@map("vendor_brands")
+  products             Product[]
+  vendorBrandAccess    VendorBrandAccess[]
+  
+  @@map("brands")
+}
+
+// Vendor request to register a completely new brand
+model VendorBrandRequest {
+  id                       Int      @id @default(autoincrement())
+  vendorId                 Int      @map("vendor_id")
+  brandName                String   @map("brand_name")
+  brandLogoUrl             String?  @map("brand_logo_url")
+  website                  String?
+  description              String?  @db.Text
+  trademarkNumber          String?  @map("trademark_number")
+  gstin                    String?
+  authorizationDocumentUrl String?  @map("authorization_document_url")
+  brandDocumentUrl         String?  @map("brand_document_url") // Could be array/json if multiple
+  brandDocuments           Json?    @map("brand_documents")
+  status                   String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  adminRemark              String?  @map("admin_remark") @db.Text
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_brand_requests")
+}
+
+// Vendor access to an existing global brand
+model VendorBrandAccess {
+  id                       Int      @id @default(autoincrement())
+  vendorId                 Int      @map("vendor_id")
+  brandId                  Int      @map("brand_id")
+  accessType               String   // OWNER, DISTRIBUTOR, DEALER, RESELLER
+  authorizationDocumentUrl String?  @map("authorization_document_url")
+  distributorAgreementUrl  String?  @map("distributor_agreement_url")
+  status                   String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  adminRemark              String?  @map("admin_remark") @db.Text
+  approvedBy               Int?     @map("approved_by")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, brandId])
+  @@map("vendor_brand_access")
 }
 
 // Tracks stock levels per warehouse
@@ -1073,14 +1158,71 @@ model PickupRequest {
 model RentalDetails {
   id              Int      @id @default(autoincrement())
   productId       Int      @unique @map("product_id")
-  dailyRate       Decimal  @map("daily_rate") @db.Decimal(10, 2)
-  securityDeposit Decimal  @map("security_deposit") @db.Decimal(10, 2)
-  minDays         Int      @default(1) @map("min_days")
-  maxDays         Int?     @map("max_days")
-  terms           String?  @db.Text
   
+  // Pricing
+  pricePerHour    Decimal? @map("price_per_hour") @db.Decimal(10, 2)
+  pricePerDay     Decimal? @map("price_per_day") @db.Decimal(10, 2)
+  pricePerWeek    Decimal? @map("price_per_week") @db.Decimal(10, 2)
+  pricePerMonth   Decimal? @map("price_per_month") @db.Decimal(10, 2)
+  weekendPrice    Decimal? @map("weekend_price") @db.Decimal(10, 2)
+  minRentalCharge Decimal? @map("min_rental_charge") @db.Decimal(10, 2)
+  overtimeCharge  Decimal? @map("overtime_charge") @db.Decimal(10, 2)
+  lateReturnCharge Decimal? @map("late_return_charge") @db.Decimal(10, 2)
+
+  // Duration
+  minDuration     Int      @default(1) @map("min_duration") // In days or hours depending on product logic
+  maxDuration     Int?     @map("max_duration")
+  extensionAllowed Boolean @default(true) @map("extension_allowed")
+  extensionApprovalRequired Boolean @default(false) @map("extension_approval_required")
+
+  // Deposit
+  securityDeposit Decimal? @map("security_deposit") @db.Decimal(10, 2)
+  depositType     String?  @default("FIXED") @map("deposit_type") // FIXED, PERCENTAGE, CATEGORY
+  isRefundable    Boolean  @default(true) @map("is_refundable")
+  refundTime      String?  @map("refund_time") // e.g., "Within 3 working days"
+  
+  // Delivery & Pickup Charges
+  deliveryCharge  Decimal? @map("delivery_charge") @db.Decimal(10, 2)
+  pickupCharge    Decimal? @map("pickup_charge") @db.Decimal(10, 2)
+  installationCharge Decimal? @map("installation_charge") @db.Decimal(10, 2)
+  dismantlingCharge Decimal? @map("dismantling_charge") @db.Decimal(10, 2)
+  freeDeliveryDistance Int? @map("free_delivery_distance") // in km
+  extraDistanceCharge Decimal? @map("extra_distance_charge") @db.Decimal(10, 2) // per km
+
+  // Operator
+  operatorRequired Boolean @default(false) @map("operator_required")
+  operatorIncluded Boolean @default(false) @map("operator_included")
+  operatorChargePerDay Decimal? @map("operator_charge_per_day") @db.Decimal(10, 2)
+  operatorFoodResponsibility String? @map("operator_food_responsibility")
+
+  // Condition & Inventory
+  equipmentCondition String? @map("equipment_condition") // NEW, EXCELLENT, GOOD, FAIR
+  manufacturingYear Int?   @map("manufacturing_year")
+  totalUnits      Int      @default(1) @map("total_units")
+  
+  // Rules & Fuel
+  fuelIncluded    String?  @map("fuel_included") // YES, NO, CHARGED_SEPARATELY
+  maxUsageHoursPerDay Int? @map("max_usage_hours_per_day")
+  cleaningCharge  Decimal? @map("cleaning_charge") @db.Decimal(10, 2)
+  
+  // Policies
+  cancellationPolicy String? @db.Text @map("cancellation_policy")
+  rentalAgreement    String? @db.Text @map("rental_agreement")
+
   product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   @@map("rental_details")
+}
+
+model RentalAvailability {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @map("product_id")
+  startDate       DateTime @map("start_date")
+  endDate         DateTime @map("end_date")
+  status          String   @default("BOOKED") // BOOKED, BLOCKED, MAINTENANCE, RESERVED
+  quantity        Int      @default(1)
+
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  @@map("rental_availability")
 }
 
 model RentalBooking {
@@ -1582,4 +1724,41 @@ model PageContent {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("page_contents")
+}
+
+// ================= PHASE 13: ESCROW & TAX COMPLIANCE ================= //
+
+model EscrowHold {
+  id               Int      @id @default(autoincrement())
+  vendorId         Int      @map("vendor_id")
+  orderId          Int      @map("order_id")
+  grossAmount      Decimal  @map("gross_amount") @db.Decimal(10, 2)
+  commissionAmount Decimal  @map("commission_amount") @db.Decimal(10, 2)
+  tdsAmount        Decimal  @map("tds_amount") @db.Decimal(10, 2) // e.g., 1% TDS u/s 194O
+  tcsAmount        Decimal  @map("tcs_amount") @db.Decimal(10, 2) // e.g., 1% GST TCS
+  netPayoutAmount  Decimal  @map("net_payout_amount") @db.Decimal(10, 2)
+  holdUntilDate    DateTime @map("hold_until_date")
+  escrowStatus     String   @default("HELD") @map("escrow_status") // HELD, RELEASED, REFUNDED, DISPUTED
+  payoutBatchId    String?  @map("payout_batch_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("escrow_holds")
+}
+
+model TaxCertificate {
+  id               Int      @id @default(autoincrement())
+  vendorId         Int      @map("vendor_id")
+  quarter          String   // e.g., "Q1", "Q2"
+  financialYear    String   @map("financial_year") // e.g., "2023-2024"
+  totalGstTcs      Decimal  @map("total_gst_tcs") @db.Decimal(12, 2)
+  totalTdsDeducted Decimal  @map("total_tds_deducted") @db.Decimal(12, 2)
+  certificateUrl   String   @map("certificate_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("tax_certificates")
 }

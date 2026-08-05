@@ -126,7 +126,11 @@ export const checkout = async (req: Request, res: Response) => {
           create: cart.items.map(item => ({
             variantId: item.variantId,
             quantity: item.quantity,
-            priceAtPurchase: (item as any).activePrice || item.variant.price
+            priceAtPurchase: (item as any).activePrice || item.variant.price,
+            isRental: item.isRental,
+            rentalStart: item.rentalStart,
+            rentalEnd: item.rentalEnd,
+            operatorRequired: item.operatorRequired
           }))
         },
         companyId: cart.user.companyId || null,

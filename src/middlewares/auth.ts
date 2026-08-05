@@ -49,6 +49,16 @@ export const requireRole = (...roles: string[]) => {
 
 export const requireAdmin = requireRole('ADMIN');
 
+export const requireVendor = (req: Request, res: Response, next: NextFunction) => {
+  requireAuth(req, res, () => {
+    const user = (req as any).user;
+    if (!user || user.role !== 'VENDOR') {
+      return res.status(403).json({ success: false, message: 'Forbidden: Vendor access required' });
+    }
+    next();
+  });
+};
+
 export const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   let token = '';

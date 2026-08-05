@@ -6,12 +6,16 @@ export const getProducts = async (req: Request, res: Response) => {
     const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '20' } = req.query;
     const user = (req as any).user;
 
-    const where: any = { isActive: true };
+    const where: any = { 
+      isActive: true, 
+      approvalStatus: { in: ['APPROVED', 'LIVE'] } 
+    };
     
     // Vendor Data Isolation
     if (user?.role === 'VENDOR') {
       where.vendorId = user.id;
       delete where.isActive; // Vendors should see their own draft/inactive products too
+      delete where.approvalStatus; // Vendors should see their own drafts and rejected items
     }
 
     if (category) where.category = { slug: category as string };
@@ -31,7 +35,8 @@ export const getProducts = async (req: Request, res: Response) => {
       where,
       include: { 
         category: true,
-        images: { where: { isPrimary: true } }
+        images: { where: { isPrimary: true } },
+        rentalDetails: true
       },
       skip,
       take: parseInt(limit as string),
@@ -93,12 +98,18 @@ export const getProductBySlug = async (req: Request, res: Response) => {
           where: { isApproved: true },
           include: { user: { select: { name: true } } },
           take: 5
+        },
+        rentalDetails: true,
+        rentalAvailabilities: {
+          where: {
+            endDate: { gte: new Date() } // Only fetch upcoming blocks
+          }
         }
       }
     });
 
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+    if (!product || (product.approvalStatus !== 'APPROVED' && product.approvalStatus !== 'LIVE' && user?.id !== product.vendorId && user?.role !== 'ADMIN')) {
+      return res.status(404).json({ success: false, message: 'Product not found or not available' });
     }
 
     // ─── Phase 15: Apply Dynamic Contract Pricing ────────────────────────────

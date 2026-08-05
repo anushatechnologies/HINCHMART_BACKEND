@@ -14,6 +14,10 @@ export const getDashboardHome = async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: vendorId }
+    });
+
     // 1. Fetch KPI Data
     const orderItems = await prisma.orderItem.findMany({
       where: { vendorId },
@@ -124,7 +128,8 @@ export const getDashboardHome = async (req: Request, res: Response): Promise<voi
           pending: [{value: pendingOrders}] // Flat line for now
         },
         recentOrders,
-        topProducts
+        topProducts,
+        vendorProfile: vendor
       }
     });
   } catch (error: any) {
