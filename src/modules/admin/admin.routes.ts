@@ -9,62 +9,64 @@ import {
   createGlobalBrand,
   updateGlobalBrand,
   deleteGlobalBrand,
-  toggleBrandStatus,
-  uploadBrandLogo,
-  getVendorBrandRequests,
-  updateVendorBrandRequestStatus,
+  updateBrandStatus,
+  getBrandRequests,
+  updateBrandRequestStatus,
   getVendorBrandAccessRequests,
   updateVendorBrandAccessStatus
 } from './admin-brands.controller';
 import { getAllWarehousesAdmin } from './admin-warehouses.controller';
 import { getPendingProducts, reviewProduct } from './admin-products.controller';
 
-
 const router = Router();
 
 // Public Admin Route
 router.post('/login', adminLogin);
 
-// RBAC Protected Admin Routes
+// Protected Admin Routes
 router.use(requireAdmin);
 
+// Dashboard
 router.get('/dashboard/stats', getDashboardStats);
-router.get('/dashboard/chart-data', getDashboardChartData);
+router.get('/dashboard/charts', getDashboardChartData);
+
+// Orders & RFQs
 router.get('/orders', getAllOrders);
-router.put('/orders/:id/status', updateOrderStatus);
+router.patch('/orders/:id/status', updateOrderStatus);
+router.get('/credit-notes', getCreditNotes);
 
+// Reviews & Ratings
 router.get('/reviews', getAllReviewsAdmin);
-router.put('/reviews/:id/approve', updateReviewStatusAdmin);
+router.patch('/reviews/:id/status', updateReviewStatusAdmin);
 
-// ─── Global Brands CRUD ───
+// Warehouses & Inventory
+router.get('/warehouses', getAllWarehousesAdmin);
+
+// Product Approvals
+router.get('/products/pending', getPendingProducts);
+router.patch('/products/:id/review', reviewProduct);
+
+// Global Brands Catalog
 router.get('/brands', getGlobalBrands);
 router.post('/brands', createGlobalBrand);
 router.put('/brands/:id', updateGlobalBrand);
 router.delete('/brands/:id', deleteGlobalBrand);
-router.patch('/brands/:id/toggle-status', toggleBrandStatus);
-router.post('/brands/:id/logo', upload.single('logo'), uploadBrandLogo);
+router.patch('/brands/:id/status', updateBrandStatus);
 
-// ─── Vendor Brand Requests ───
-router.get('/brands/requests', getVendorBrandRequests);
-router.patch('/brands/requests/:id/status', updateVendorBrandRequestStatus);
+// Brand Requests
+router.get('/brands/requests', getBrandRequests);
+router.patch('/brands/requests/:id', updateBrandRequestStatus);
 
-// ─── Vendor Brand Access ───
+// Brand Access Permissions
 router.get('/brands/access', getVendorBrandAccessRequests);
-router.patch('/brands/access/:id/status', updateVendorBrandAccessStatus);
+router.patch('/brands/access/:id', updateVendorBrandAccessStatus);
 
-// Warehouses
-router.get('/warehouses', getAllWarehousesAdmin);
-
-// Products
-router.get('/products/pending', getPendingProducts);
-router.post('/products/:id/review', reviewProduct);
-
-router.get('/finance/credit-notes', getCreditNotes);
-
-router.post('/erp/sync', triggerErpSync);
-
+// Finance & Wallets
 router.get('/wallets/transactions', getWalletTransactions);
-router.post('/wallets/transactions/:id/approve', approveWalletTransaction);
+router.patch('/wallets/transactions/:id/approve', approveWalletTransaction);
+
+// System & Integrations
 router.get('/system/metrics', getSystemMetrics);
+router.post('/erp/sync', triggerErpSync);
 
 export default router;

@@ -128,7 +128,7 @@ export const updateBrandStatus = async (req: Request, res: Response): Promise<vo
 
 export const getBrandRequests = async (req: Request, res: Response): Promise<void> => {
   try {
-    const requests = await prisma.brandRequest.findMany({
+    const requests = await (prisma as any).brandRequest.findMany({
       include: {
         vendor: { select: { id: true, companyName: true, contactEmail: true, phone: true } }
       },
@@ -156,13 +156,13 @@ export const updateBrandRequestStatus = async (req: Request, res: Response): Pro
       return;
     }
 
-    const request = await prisma.brandRequest.findUnique({ where: { id } });
+    const request = await (prisma as any).brandRequest.findUnique({ where: { id } });
     if (!request) {
       res.status(404).json({ success: false, message: 'Brand request not found' });
       return;
     }
 
-    const updatedRequest = await prisma.brandRequest.update({
+    const updatedRequest = await (prisma as any).brandRequest.update({
       where: { id },
       data: { status, adminRemark }
     });
