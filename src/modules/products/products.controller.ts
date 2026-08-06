@@ -3,7 +3,7 @@ import prisma from '../../utils/prisma';
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '100' } = req.query;
+    const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '1000' } = req.query;
     const user = (req as any).user;
 
     const where: any = { 

@@ -43,7 +43,7 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
           variants: true,
           images: { where: { isPrimary: true } }
         },
-        take: 50,
+        take: 1000,
         orderBy: { createdAt: 'desc' }
       });
     }
