@@ -117,3 +117,32 @@ export const createVendorProduct = async (req: Request, res: Response): Promise<
     res.status(500).json({ success: false, message: 'Failed to create product', error: error.message });
   }
 };
+
+export const updateVendorInventory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { productId, variantId, quantity } = req.body;
+    const qty = parseInt(quantity, 10) || 0;
+
+    if (variantId) {
+      await prisma.productVariant.update({
+        where: { id: parseInt(variantId, 10) },
+        data: { stockQty: qty }
+      });
+    }
+
+    if (productId) {
+      const stockStatus = qty === 0 ? 'OUT_OF_STOCK' : qty < 10 ? 'LOW_STOCK' : 'IN_STOCK';
+      await prisma.product.update({
+        where: { id: parseInt(productId, 10) },
+        data: {
+          stockStatus
+        }
+      });
+    }
+
+    res.status(200).json({ success: true, message: 'Stock inventory updated successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to update inventory', error: error.message });
+  }
+};
+
