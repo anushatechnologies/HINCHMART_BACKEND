@@ -36,7 +36,8 @@ export const getProducts = async (req: Request, res: Response) => {
       where,
       include: { 
         category: true,
-        images: { where: { isPrimary: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+        videos: true,
         rentalDetails: true
       },
       skip,
@@ -85,6 +86,7 @@ export const getProductBySlug = async (req: Request, res: Response) => {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
+        videos: true,
         variants: true,
         vendor: {
           select: { id: true, companyName: true, logoUrl: true }
@@ -162,30 +164,105 @@ export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { 
-      name, brand, modelNumber, sku, categoryId, 
-      basePrice, mrp, gstPercent, description, 
-      isRentable, rentPricePerDay, isSameDayDelivery, stockStatus 
+      name, slug, brand, productType, modelNumber, sku, categoryId, vendorId,
+      barcode, hsnCode, moq, countryOfOrigin, warranty,
+      basePrice, mrp, bulkPrice, dealerPrice, gstPercent, 
+      stockStatus, approvalStatus, isActive,
+      isRentable, rentPricePerDay, minRentalDays, isSameDayDelivery,
+      description, technicalSpecs, features,
+      metaTitle, metaDescription, metaKeywords,
+      imageUrls, videoUrl
     } = req.body;
 
+    const productIdInt = parseInt(id, 10);
+
+    const updateData: any = {};
+    if (name) updateData.name = name;
+    if (slug) updateData.slug = slug;
+    if (brand !== undefined) updateData.brand = brand;
+    if (productType) updateData.productType = productType;
+    if (modelNumber || sku) updateData.modelNumber = modelNumber || sku;
+    if (categoryId) updateData.categoryId = parseInt(categoryId, 10);
+    if (vendorId) updateData.vendorId = parseInt(vendorId, 10);
+    if (barcode !== undefined) updateData.barcode = barcode;
+    if (hsnCode !== undefined) updateData.hsnCode = hsnCode;
+    if (moq !== undefined) updateData.moq = parseInt(moq, 10);
+    if (countryOfOrigin !== undefined) updateData.countryOfOrigin = countryOfOrigin;
+    if (warranty !== undefined) updateData.warranty = warranty;
+
+    if (basePrice !== undefined) updateData.basePrice = parseFloat(basePrice);
+    if (mrp !== undefined) updateData.mrp = parseFloat(mrp);
+    if (bulkPrice !== undefined) updateData.bulkPrice = bulkPrice ? parseFloat(bulkPrice) : null;
+    if (dealerPrice !== undefined) updateData.dealerPrice = dealerPrice ? parseFloat(dealerPrice) : null;
+    if (gstPercent !== undefined) updateData.gstPercent = parseFloat(gstPercent);
+
+    if (stockStatus) updateData.stockStatus = stockStatus;
+    if (approvalStatus) updateData.approvalStatus = approvalStatus;
+    if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+
+    if (isRentable !== undefined) updateData.isRentable = Boolean(isRentable);
+    if (rentPricePerDay !== undefined) updateData.rentPricePerDay = rentPricePerDay ? parseFloat(rentPricePerDay) : null;
+    if (minRentalDays !== undefined) updateData.minRentalDays = minRentalDays ? parseInt(minRentalDays, 10) : null;
+    if (isSameDayDelivery !== undefined) updateData.isSameDayDelivery = Boolean(isSameDayDelivery);
+
+    if (description !== undefined) updateData.description = description;
+    if (technicalSpecs !== undefined) updateData.technicalSpecs = typeof technicalSpecs === 'string' ? technicalSpecs : JSON.stringify(technicalSpecs);
+    if (features !== undefined) updateData.features = typeof features === 'string' ? features : JSON.stringify(features);
+
+    if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
+    if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
+    if (metaKeywords !== undefined) updateData.metaKeywords = metaKeywords;
+
     const product = await prisma.product.update({
-      where: { id: parseInt(id, 10) },
-      data: {
-        ...(name && { name }),
-        ...(brand && { brand }),
-        ...((modelNumber || sku) && { modelNumber: modelNumber || sku }),
-        ...(categoryId && { categoryId: parseInt(categoryId, 10) }),
-        ...(basePrice !== undefined && { basePrice: parseFloat(basePrice) }),
-        ...(mrp !== undefined && { mrp: parseFloat(mrp) }),
-        ...(gstPercent !== undefined && { gstPercent: parseFloat(gstPercent) }),
-        ...(description !== undefined && { description }),
-        ...(isRentable !== undefined && { isRentable: Boolean(isRentable) }),
-        ...(rentPricePerDay !== undefined && { rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null }),
-        ...(isSameDayDelivery !== undefined && { isSameDayDelivery: Boolean(isSameDayDelivery) }),
-        ...(stockStatus && { stockStatus })
+      where: { id: productIdInt },
+      data: updateData,
+      include: {
+        category: true,
+        images: true,
+        videos: true
       }
     });
 
-    res.status(200).json({ success: true, data: product, message: 'Product updated successfully' });
+    // Handle Image URLs update if provided
+    if (Array.isArray(imageUrls)) {
+      // Delete existing images and recreate
+      await prisma.productImage.deleteMany({ where: { productId: productIdInt } });
+      if (imageUrls.length > 0) {
+        await prisma.productImage.createMany({
+          data: imageUrls.map((url: string, index: number) => ({
+            productId: productIdInt,
+            url,
+            isPrimary: index === 0,
+            sortOrder: index
+          }))
+        });
+      }
+    }
+
+    // Handle Video URL update if provided
+    if (videoUrl !== undefined) {
+      await prisma.productVideo.deleteMany({ where: { productId: productIdInt } });
+      if (videoUrl && videoUrl.trim()) {
+        await prisma.productVideo.create({
+          data: {
+            productId: productIdInt,
+            url: videoUrl.trim(),
+            title: `${product.name} Video`
+          }
+        });
+      }
+    }
+
+    const reFetched = await prisma.product.findUnique({
+      where: { id: productIdInt },
+      include: {
+        category: true,
+        images: { orderBy: { sortOrder: 'asc' } },
+        videos: true
+      }
+    });
+
+    res.status(200).json({ success: true, data: reFetched, message: 'Product updated successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
