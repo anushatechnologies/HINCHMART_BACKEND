@@ -22,7 +22,7 @@ const s3Storage = multerS3({
   s3: s3Client,
   bucket: bucketName,
   contentType: multerS3.AUTO_CONTENT_TYPE,
-  key: function (req, file, cb) {
+  key: function (req: any, file: any, cb: any) {
     const folder = file.fieldname === 'document' ? 'documents' : file.fieldname === 'video' ? 'videos' : 'images';
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);

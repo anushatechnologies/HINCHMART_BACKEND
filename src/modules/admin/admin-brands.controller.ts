@@ -1,15 +1,19 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../utils/prisma';
 
-const prisma = new PrismaClient();
-
-// ================= GLOBAL BRANDS =================
+// ================= GLOBAL BRANDS CATALOG =================
 
 export const getGlobalBrands = async (req: Request, res: Response): Promise<void> => {
   try {
     const brands = await prisma.brand.findMany({
+      include: {
+        _count: {
+          select: { products: true, vendorAccess: true }
+        }
+      },
       orderBy: { createdAt: 'desc' }
     });
+
     res.status(200).json({ success: true, data: brands });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -18,21 +22,20 @@ export const getGlobalBrands = async (req: Request, res: Response): Promise<void
 
 export const createGlobalBrand = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, logoUrl, description, website, trademarkNumber, country, status, manufacturer } = req.body;
+    const { name, logoUrl, description, website, trademarkNumber, country, status } = req.body;
 
     if (!name) {
       res.status(400).json({ success: false, message: 'Brand name is required' });
       return;
     }
 
-    // Check if brand exists
-    const existing = await prisma.brand.findUnique({ where: { name } });
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
+    const existing = await prisma.brand.findUnique({ where: { slug } });
     if (existing) {
-      res.status(400).json({ success: false, message: 'Brand with this name already exists' });
+      res.status(409).json({ success: false, message: 'A brand with this name or slug already exists' });
       return;
     }
-
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 
     const brand = await prisma.brand.create({
       data: {
@@ -44,8 +47,8 @@ export const createGlobalBrand = async (req: Request, res: Response): Promise<vo
         trademarkNumber: trademarkNumber || null,
         country: country || 'India',
         status: status || 'ACTIVE',
-        createdBy: req.user?.id || 1,
-        approvedBy: req.user?.id || 1
+        createdBy: (req as any).user?.id || 1,
+        approvedBy: (req as any).user?.id || 1
       }
     });
 
@@ -55,181 +58,111 @@ export const createGlobalBrand = async (req: Request, res: Response): Promise<vo
   }
 };
 
-/**
- * Update an existing global brand
- * PUT /api/admin/brands/:id
- */
 export const updateGlobalBrand = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
-      res.status(400).json({ success: false, message: 'Invalid brand ID' });
-      return;
-    }
+    const { name, logoUrl, description, website, trademarkNumber, country, status } = req.body;
 
-    const { name, logoUrl, description, website, trademarkNumber, country, status, manufacturer } = req.body;
-
-    const existing = await prisma.brand.findUnique({ where: { id } });
-    if (!existing) {
-      res.status(404).json({ success: false, message: 'Brand not found' });
-      return;
-    }
-
-    // If name is changing, check uniqueness
-    if (name && name !== existing.name) {
-      const nameConflict = await prisma.brand.findUnique({ where: { name } });
-      if (nameConflict) {
-        res.status(400).json({ success: false, message: 'Another brand with this name already exists' });
-        return;
-      }
-    }
-
-    const slug = name
-      ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
-      : existing.slug;
-
-    const updated = await prisma.brand.update({
+    const brand = await prisma.brand.update({
       where: { id },
       data: {
-        ...(name && { name, slug }),
+        ...(name && { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') }),
         ...(logoUrl !== undefined && { logoUrl }),
         ...(description !== undefined && { description }),
         ...(website !== undefined && { website }),
         ...(trademarkNumber !== undefined && { trademarkNumber }),
         ...(country !== undefined && { country }),
-        ...(status && { status }),
+        ...(status && { status })
       }
     });
 
-    res.status(200).json({ success: true, data: updated, message: 'Brand updated successfully' });
+    res.status(200).json({ success: true, data: brand, message: 'Brand updated successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/**
- * Delete a global brand
- * DELETE /api/admin/brands/:id
- */
 export const deleteGlobalBrand = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
-      res.status(400).json({ success: false, message: 'Invalid brand ID' });
-      return;
-    }
 
-    const existing = await prisma.brand.findUnique({ where: { id } });
-    if (!existing) {
-      res.status(404).json({ success: false, message: 'Brand not found' });
+    const productCount = await prisma.product.count({ where: { brandId: id } });
+    if (productCount > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Cannot delete brand. It is linked to ${productCount} active products. Change status to INACTIVE instead.`
+      });
       return;
     }
 
     await prisma.brand.delete({ where: { id } });
 
-    res.status(200).json({ success: true, message: `Brand "${existing.name}" deleted successfully` });
+    res.status(200).json({ success: true, message: 'Brand deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/**
- * Toggle brand active/inactive status
- * PATCH /api/admin/brands/:id/toggle-status
- */
-export const toggleBrandStatus = async (req: Request, res: Response): Promise<void> => {
+export const updateBrandStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
-    const existing = await prisma.brand.findUnique({ where: { id } });
-    if (!existing) {
-      res.status(404).json({ success: false, message: 'Brand not found' });
+    const { status } = req.body;
+
+    if (!['ACTIVE', 'INACTIVE', 'PENDING'].includes(status)) {
+      res.status(400).json({ success: false, message: 'Invalid status' });
       return;
     }
 
-    const newStatus = existing.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    const updated = await prisma.brand.update({
+    const brand = await prisma.brand.update({
       where: { id },
-      data: { status: newStatus }
+      data: { status }
     });
 
-    res.status(200).json({ success: true, data: updated, message: `Brand ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully` });
+    res.status(200).json({ success: true, data: brand, message: `Brand status updated to ${status}` });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/**
- * Upload / change brand logo
- * POST /api/admin/brands/:id/logo
- * multipart/form-data  field: logo
- */
-export const uploadBrandLogo = async (req: Request, res: Response): Promise<void> => {
+// ================= BRAND REGISTRATION REQUESTS =================
+
+export const getBrandRequests = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
-      res.status(400).json({ success: false, message: 'Invalid brand ID' });
-      return;
-    }
-
-    const file = req.file as any;
-    if (!file) {
-      res.status(400).json({ success: false, message: 'No logo file provided' });
-      return;
-    }
-
-    // Cloudinary URL is available as file.path when using multer-storage-cloudinary
-    const logoUrl = file.path || file.secure_url || file.url;
-
-    const existing = await prisma.brand.findUnique({ where: { id } });
-    if (!existing) {
-      res.status(404).json({ success: false, message: 'Brand not found' });
-      return;
-    }
-
-    const updated = await prisma.brand.update({
-      where: { id },
-      data: { logoUrl }
-    });
-
-    res.status(200).json({ success: true, data: updated, logoUrl, message: 'Brand logo updated successfully' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ================= VENDOR BRAND REQUESTS (Option B) =================
-
-export const getVendorBrandRequests = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const requests = await prisma.vendorBrandRequest.findMany({
+    const requests = await prisma.brandRequest.findMany({
       include: {
-        vendor: { select: { id: true, companyName: true, contactEmail: true } }
+        vendor: { select: { id: true, companyName: true, contactEmail: true, phone: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
+
     res.status(200).json({ success: true, data: requests });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-export const updateVendorBrandRequestStatus = async (req: Request, res: Response): Promise<void> => {
+export const updateBrandRequestStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status, adminRemark } = req.body; // APPROVED, REJECTED
+    const { status, adminRemark } = req.body;
+
+    if (!['APPROVED', 'REJECTED'].includes(status)) {
+      res.status(400).json({ success: false, message: 'Invalid status' });
+      return;
+    }
 
     if (status === 'REJECTED' && !adminRemark) {
       res.status(400).json({ success: false, message: 'Admin remark is required for rejection' });
       return;
     }
 
-    const request = await prisma.vendorBrandRequest.findUnique({ where: { id } });
+    const request = await prisma.brandRequest.findUnique({ where: { id } });
     if (!request) {
-      res.status(404).json({ success: false, message: 'Request not found' });
+      res.status(404).json({ success: false, message: 'Brand request not found' });
       return;
     }
 
-    const updatedRequest = await prisma.vendorBrandRequest.update({
+    const updatedRequest = await prisma.brandRequest.update({
       where: { id },
       data: { status, adminRemark }
     });
@@ -249,7 +182,7 @@ export const updateVendorBrandRequestStatus = async (req: Request, res: Response
             website: request.website,
             trademarkNumber: request.trademarkNumber,
             status: 'ACTIVE',
-            approvedBy: req.user?.id || 1
+            approvedBy: (req as any).user?.id || 1
           }
         });
       }
@@ -267,7 +200,7 @@ export const updateVendorBrandRequestStatus = async (req: Request, res: Response
           accessType: 'OWNER',
           status: 'APPROVED',
           adminRemark: 'Automatically granted as brand owner upon approval of registration request.',
-          approvedBy: req.user?.id || 1
+          approvedBy: (req as any).user?.id || 1
         }
       });
     }
@@ -278,7 +211,7 @@ export const updateVendorBrandRequestStatus = async (req: Request, res: Response
   }
 };
 
-// ================= VENDOR BRAND ACCESS (Option A & C) =================
+// ================= VENDOR BRAND ACCESS =================
 
 export const getVendorBrandAccessRequests = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -310,7 +243,7 @@ export const updateVendorBrandAccessStatus = async (req: Request, res: Response)
       data: {
         status,
         adminRemark,
-        approvedBy: status === 'APPROVED' ? (req.user?.id || 1) : null
+        approvedBy: status === 'APPROVED' ? ((req as any).user?.id || 1) : null
       }
     });
 
