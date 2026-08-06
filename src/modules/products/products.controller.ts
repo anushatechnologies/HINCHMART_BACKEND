@@ -3,19 +3,22 @@ import prisma from '../../utils/prisma';
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '20' } = req.query;
+    const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '100' } = req.query;
     const user = (req as any).user;
 
     const where: any = { 
-      isActive: true, 
-      approvalStatus: { in: ['APPROVED', 'LIVE'] } 
+      deletedAt: null
     };
-    
+
+    // Only filter by isActive & APPROVED for regular unauthenticated public users
+    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'VENDOR')) {
+      where.isActive = true;
+      where.approvalStatus = { in: ['APPROVED', 'LIVE'] };
+    }
+
     // Vendor Data Isolation
     if (user?.role === 'VENDOR') {
       where.vendorId = user.id;
-      delete where.isActive; // Vendors should see their own draft/inactive products too
-      delete where.approvalStatus; // Vendors should see their own drafts and rejected items
     }
 
     if (category) where.category = { slug: category as string };
@@ -43,7 +46,7 @@ export const getProducts = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    // ─── Phase 15: Apply Dynamic Contract Pricing ────────────────────────────
+    // Contract Pricing for B2B Corporate Companies
     if (user?.companyId) {
       const contracts = await prisma.companyContract.findMany({
         where: { companyId: user.companyId, isActive: true }
@@ -52,15 +55,24 @@ export const getProducts = async (req: Request, res: Response) => {
         products = products.map((prod: any) => {
           const contract = contracts.find(c => c.productId === prod.id);
           if (contract) {
-            prod.basePrice = contract.customPrice; // override basePrice
-            prod.isContractPrice = true; // flag for frontend
+            prod.basePrice = contract.customPrice;
+            prod.isContractPrice = true;
           }
           return prod;
         });
       }
     }
 
-    res.json({ success: true, data: products, total, page: parseInt(page as string), limit: parseInt(limit as string) });
+    res.status(200).json({
+      success: true,
+      data: products,
+      pagination: {
+        total,
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        totalPages: Math.ceil(total / parseInt(limit as string))
+      }
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -74,61 +86,40 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     const product = await prisma.product.findUnique({
       where: { slug },
       include: {
-        category: { include: { parent: true } },
-        vendor: true,
-        variants: { include: { images: true } },
-        images: true,
-        // New B2B Relations
-        documents: true,
-        videos: true,
-        qnas: {
-          where: { isAnswered: true },
-          include: { user: { select: { name: true } } },
-          take: 10
-        },
-        relatedFrom: {
-          include: {
-            relatedProduct: {
-              include: { images: { where: { isPrimary: true } } }
-            }
-          },
-          take: 6
-        },
-        reviews: {
-          where: { isApproved: true },
-          include: { user: { select: { name: true } } },
-          take: 5
+        category: true,
+        images: { orderBy: { sortOrder: 'asc' } },
+        variants: true,
+        vendor: {
+          select: { id: true, companyName: true, logoUrl: true }
         },
         rentalDetails: true,
-        rentalAvailabilities: {
-          where: {
-            endDate: { gte: new Date() } // Only fetch upcoming blocks
-          }
+        reviews: {
+          include: {
+            user: { select: { name: true } }
+          },
+          take: 5,
+          orderBy: { createdAt: 'desc' }
         }
       }
     });
 
-    if (!product || (product.approvalStatus !== 'APPROVED' && product.approvalStatus !== 'LIVE' && user?.id !== product.vendorId && user?.role !== 'ADMIN')) {
-      return res.status(404).json({ success: false, message: 'Product not found or not available' });
+    if (!product || product.deletedAt) {
+      res.status(404).json({ success: false, message: 'Product not found' });
+      return;
     }
 
-    // ─── Phase 15: Apply Dynamic Contract Pricing ────────────────────────────
+    // Apply contract pricing if user has company contract
     if (user?.companyId) {
-      const contract = await prisma.companyContract.findUnique({
-        where: {
-          companyId_productId: { companyId: user.companyId, productId: product.id }
-        }
+      const contract = await prisma.companyContract.findFirst({
+        where: { companyId: user.companyId, productId: product.id, isActive: true }
       });
-      
-      if (contract && contract.isActive) {
+      if (contract) {
         (product as any).basePrice = contract.customPrice;
         (product as any).isContractPrice = true;
-        // Optionally override variant prices if they have the same logic, 
-        // but for now we'll just override the product basePrice.
       }
     }
 
-    res.json({ success: true, data: product });
+    res.status(200).json({ success: true, data: product });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -136,92 +127,51 @@ export const getProductBySlug = async (req: Request, res: Response) => {
 
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { 
-      name, slug, brand, categoryId, description, basePrice, mrp, gstPercent,
-      barcode, modelNumber, hsnCode, moq, countryOfOrigin, warranty, technicalSpecs,
-      bulkPrice, dealerPrice, stockStatus, vendorId, features
-    } = req.body;
+    const { name, brand, categoryId, basePrice, mrp, sku, description, isRentable, rentPricePerDay, isSameDayDelivery } = req.body;
 
-    const user = (req as any).user;
-    const assignedVendorId = user?.role === 'VENDOR' ? user.id : (vendorId ? parseInt(vendorId) : null);
-    
+    if (!name || !categoryId || !basePrice) {
+      res.status(400).json({ success: false, message: 'Name, Category, and Price are required' });
+      return;
+    }
+
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now();
+
     const product = await prisma.product.create({
       data: {
         name,
         slug,
-        brand,
-        categoryId: parseInt(categoryId),
-        vendorId: assignedVendorId,
-        description,
+        brand: brand || 'Generic',
+        categoryId: parseInt(categoryId, 10),
+        vendorId: (req as any).user?.id || 1,
         basePrice: parseFloat(basePrice),
-        mrp: parseFloat(mrp),
-        gstPercent: parseFloat(gstPercent),
-        bulkPrice: bulkPrice ? parseFloat(bulkPrice) : null,
-        dealerPrice: dealerPrice ? parseFloat(dealerPrice) : null,
-        barcode: barcode || null,
-        modelNumber: modelNumber || null,
-        hsnCode: hsnCode || null,
-        moq: moq ? parseInt(moq) : 1,
-        countryOfOrigin: countryOfOrigin || null,
-        warranty: warranty || null,
-        technicalSpecs: technicalSpecs ? (typeof technicalSpecs === 'string' ? JSON.parse(technicalSpecs) : technicalSpecs) : null,
-        features: features ? (typeof features === 'string' ? JSON.parse(features) : features) : null,
-        stockStatus: stockStatus || 'IN_STOCK',
+        mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
+        sku: sku || `SKU-${Date.now()}`,
+        description: description || '',
+        approvalStatus: 'APPROVED',
+        isActive: true,
+        isRentable: Boolean(isRentable),
+        rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null,
+        isSameDayDelivery: Boolean(isSameDayDelivery)
       }
     });
 
-    if (req.files && Array.isArray(req.files)) {
-      const imagesData = req.files.map((file: any, index: number) => ({
-        productId: product.id,
-        url: file.path,
-        isPrimary: index === 0,
-      }));
-      if (imagesData.length > 0) {
-        await prisma.productImage.createMany({ data: imagesData });
-      }
-    }
-
-    const createdProduct = await prisma.product.findUnique({
-      where: { id: product.id },
-      include: { images: true, category: true }
-    });
-
-    res.status(201).json({ success: true, data: createdProduct });
+    res.status(201).json({ success: true, data: product, message: 'Product created successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-export const updateProduct = async (req: any, res: any) => {
+export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, brand, description, basePrice, mrp, gstPercent, bulkPrice, dealerPrice, stockStatus, isActive, isRentable, rentPricePerDay, minRentalDays, isSameDayDelivery, moq, barcode, modelNumber, hsnCode, countryOfOrigin, warranty, technicalSpecs, features } = req.body;
-    const data: any = {};
-    if (name !== undefined) data.name = name;
-    if (brand !== undefined) data.brand = brand;
-    if (description !== undefined) data.description = description;
-    if (basePrice !== undefined) data.basePrice = parseFloat(basePrice);
-    if (mrp !== undefined) data.mrp = parseFloat(mrp);
-    if (gstPercent !== undefined) data.gstPercent = parseFloat(gstPercent);
-    if (bulkPrice !== undefined) data.bulkPrice = bulkPrice ? parseFloat(bulkPrice) : null;
-    if (dealerPrice !== undefined) data.dealerPrice = dealerPrice ? parseFloat(dealerPrice) : null;
-    if (stockStatus !== undefined) data.stockStatus = stockStatus;
-    if (isActive !== undefined) data.isActive = isActive === true || isActive === 'true';
-    if (moq !== undefined) data.moq = parseInt(moq);
-    if (isRentable !== undefined) data.isRentable = isRentable === true || isRentable === 'true';
-    if (rentPricePerDay !== undefined) data.rentPricePerDay = rentPricePerDay ? parseFloat(rentPricePerDay) : null;
-    if (minRentalDays !== undefined) data.minRentalDays = minRentalDays ? parseInt(minRentalDays) : null;
-    if (isSameDayDelivery !== undefined) data.isSameDayDelivery = isSameDayDelivery === true || isSameDayDelivery === 'true';
-    if (barcode !== undefined) data.barcode = barcode || null;
-    if (modelNumber !== undefined) data.modelNumber = modelNumber || null;
-    if (hsnCode !== undefined) data.hsnCode = hsnCode || null;
-    if (countryOfOrigin !== undefined) data.countryOfOrigin = countryOfOrigin || null;
-    if (warranty !== undefined) data.warranty = warranty || null;
-    if (technicalSpecs !== undefined) data.technicalSpecs = technicalSpecs ? (typeof technicalSpecs === 'string' ? JSON.parse(technicalSpecs) : technicalSpecs) : null;
-    if (features !== undefined) data.features = features ? (typeof features === 'string' ? JSON.parse(features) : features) : null;
-    
-    const updated = await prisma.product.update({ where: { id: parseInt(id) }, data, include: { images: true, category: true } });
-    res.json({ success: true, data: updated });
+    const updateData = req.body;
+
+    const product = await prisma.product.update({
+      where: { id: parseInt(id, 10) },
+      data: updateData
+    });
+
+    res.status(200).json({ success: true, data: product, message: 'Product updated successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
