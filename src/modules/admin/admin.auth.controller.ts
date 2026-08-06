@@ -1,7 +1,11 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import prisma from '../../utils/prisma';
+import {
+  generateAccessToken,
+  generateRefreshTokenString,
+  saveRefreshToken
+} from '../../utils/tokenUtils';
 
 export const adminLogin = async (req: Request, res: Response) => {
   try {
@@ -12,21 +16,21 @@ export const adminLogin = async (req: Request, res: Response) => {
     if (admin) {
       const isMatch = await bcrypt.compare(password, admin.passwordHash);
       if (isMatch) {
-        const secretKey = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'secret123';
-        const token = jwt.sign(
-          { id: admin.id, email: admin.email, role: 'ADMIN' },
-          secretKey,
-          { expiresIn: '1d' }
-        );
+        const accessToken = generateAccessToken({ id: admin.id, email: admin.email, role: 'ADMIN' });
+        const refreshToken = generateRefreshTokenString();
+        await saveRefreshToken(refreshToken, 'ADMIN', { adminId: admin.id });
+
         return res.json({
           success: true,
-          token,
+          accessToken,
+          refreshToken,
+          token: accessToken, // backward compat
           data: { id: admin.id, name: admin.name, email: admin.email, role: 'ADMIN' }
         });
       }
     }
 
-    // 2. Try to find Vendor
+    // 2. Try to find Vendor (vendors can also log in through admin panel)
     const vendor = await prisma.vendor.findFirst({ where: { contactEmail: email } });
     if (vendor && vendor.passwordHash) {
       const isMatch = await bcrypt.compare(password, vendor.passwordHash);
@@ -34,16 +38,16 @@ export const adminLogin = async (req: Request, res: Response) => {
         if (vendor.status !== 'ACTIVE') {
           return res.status(403).json({ success: false, message: 'Vendor account is suspended or pending approval.' });
         }
-        
-        const secretKey = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'secret123';
-        const token = jwt.sign(
-          { id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' },
-          secretKey,
-          { expiresIn: '1d' }
-        );
+
+        const accessToken = generateAccessToken({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' });
+        const refreshToken = generateRefreshTokenString();
+        await saveRefreshToken(refreshToken, 'VENDOR', { vendorId: vendor.id });
+
         return res.json({
           success: true,
-          token,
+          accessToken,
+          refreshToken,
+          token: accessToken, // backward compat
           data: { id: vendor.id, name: vendor.companyName, email: vendor.contactEmail, role: 'VENDOR' }
         });
       }

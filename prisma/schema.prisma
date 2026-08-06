@@ -62,6 +62,21 @@ model User {
   @@map("users")
 }
 
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique @db.VarChar(512)
+  userType  String   // 'USER' | 'VENDOR' | 'ADMIN'
+  userId    Int?
+  vendorId  Int?
+  adminId   Int?
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
 model Otp {
   id        Int      @id @default(autoincrement())
   target    String   // Stores email or phone number

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'secret123';
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'hinchmart_access_secret_2024!';
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -14,15 +14,31 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
   }
 
   if (!token) {
-    return res.status(401).json({ success: false, message: 'Unauthorized: Missing or invalid token' });
+    return res.status(401).json({
+      success: false,
+      code: 'NO_TOKEN',
+      message: 'Unauthorized: Missing or invalid token'
+    });
   }
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     (req as any).user = payload;
     next();
-  } catch (error) {
-    return res.status(401).json({ success: false, message: 'Unauthorized: Token expired or invalid' });
+  } catch (error: any) {
+    // Distinguish expired from invalid — clients use TOKEN_EXPIRED to trigger silent refresh
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_EXPIRED',
+        message: 'Access token expired. Please refresh.'
+      });
+    }
+    return res.status(401).json({
+      success: false,
+      code: 'TOKEN_INVALID',
+      message: 'Unauthorized: Token is invalid'
+    });
   }
 };
 
@@ -34,14 +50,11 @@ export const requireRole = (...roles: string[]) => {
     requireAuth(req, res, () => {
       const user = (req as any).user;
       if (!user) {
-        return res.status(401).json({ success: false, message: 'Unauthorized: Authentication required' });
+        return res.status(401).json({ success: false, code: 'NO_TOKEN', message: 'Unauthorized' });
       }
-
-      // ADMIN role has full access
       if (user.role === 'ADMIN' || roles.includes(user.role)) {
         return next();
       }
-
       return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges' });
     });
   };
@@ -69,15 +82,13 @@ export const optionalAuth = (req: Request, res: Response, next: NextFunction) =>
     token = req.query.token as string;
   }
 
-  if (!token) {
-    return next();
-  }
+  if (!token) return next();
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     (req as any).user = payload;
-  } catch (error) {
-    // Ignore invalid token in optionalAuth
+  } catch {
+    // silently ignore in optionalAuth
   }
   next();
 };

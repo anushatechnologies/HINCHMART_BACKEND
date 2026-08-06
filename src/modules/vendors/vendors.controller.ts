@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../../utils/prisma';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import { auth as firebaseAuth } from '../../utils/firebase';
-
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'secret123';
+import { generateAccessToken, generateRefreshTokenString, saveRefreshToken } from '../../utils/tokenUtils';
 
 export const getVendors = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -131,17 +129,17 @@ export const registerVendor = async (req: Request, res: Response): Promise<void>
       }
     });
 
-    const token = jwt.sign(
-      { id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const accessToken = generateAccessToken({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' });
+    const refreshToken = generateRefreshTokenString();
+    await saveRefreshToken(refreshToken, 'VENDOR', { vendorId: vendor.id });
 
-    res.status(201).json({ 
-      success: true, 
-      message: 'Seller registration successful', 
+    res.status(201).json({
+      success: true,
+      message: 'Seller registration successful',
       data: vendor,
-      token
+      accessToken,
+      refreshToken,
+      token: accessToken // backward compat
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Registration failed', error: error.message });
@@ -172,17 +170,17 @@ export const loginVendor = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const token = jwt.sign(
-      { id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const accessToken = generateAccessToken({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' });
+    const refreshToken = generateRefreshTokenString();
+    await saveRefreshToken(refreshToken, 'VENDOR', { vendorId: vendor.id });
 
-    res.status(200).json({ 
-      success: true, 
-      message: 'Login successful', 
-      token, 
-      data: vendor 
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      accessToken,
+      refreshToken,
+      token: accessToken, // backward compat
+      data: vendor
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Login failed', error: error.message });
@@ -433,16 +431,16 @@ export const verifyFirebaseVendor = async (req: Request, res: Response): Promise
       });
     }
 
-    const jwtToken = jwt.sign(
-      { id: vendor.id, role: 'VENDOR' },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const accessToken = generateAccessToken({ id: vendor.id, role: 'VENDOR' });
+    const refreshToken = generateRefreshTokenString();
+    await saveRefreshToken(refreshToken, 'VENDOR', { vendorId: vendor.id });
 
     res.status(200).json({
       success: true,
       message: 'Vendor authentication successful',
-      token: jwtToken,
+      accessToken,
+      refreshToken,
+      token: accessToken, // backward compat
       data: {
         id: vendor.id,
         companyName: vendor.companyName,
