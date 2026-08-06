@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 export const getVendorProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const vendorId = (req as any).user?.id || parseInt(req.query.vendorId as string, 10);
-    const status = req.query.status as string; // 'ACTIVE', 'PENDING', 'DELETED'
+    const status = req.query.status as string;
 
     let whereClause: Prisma.ProductWhereInput = {};
 
@@ -35,7 +35,6 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
       orderBy: { createdAt: 'desc' }
     });
 
-    // Fallback: If no vendor-specific products exist yet, fetch all approved catalog products
     if (products.length === 0 && status !== 'DELETED') {
       products = await prisma.product.findMany({
         where: { deletedAt: null, approvalStatus: 'APPROVED' },
@@ -102,9 +101,9 @@ export const createVendorProduct = async (req: Request, res: Response): Promise<
         vendorId: vendorId ? parseInt(vendorId, 10) : 1,
         basePrice: parseFloat(basePrice),
         mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
-        sku: sku || `SKU-${Date.now()}`,
+        modelNumber: sku || `SKU-${Date.now()}`,
         description: description || '',
-        approvalStatus: 'APPROVED', // Auto-approve or set to PENDING
+        approvalStatus: 'APPROVED',
         isActive: true,
         isRentable: Boolean(isRentable),
         rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null,

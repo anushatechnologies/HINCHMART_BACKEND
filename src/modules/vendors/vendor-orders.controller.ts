@@ -1,112 +1,109 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { emitOrderStatusChange } from '../../socket';
 
 const prisma = new PrismaClient();
 
 export const getVendorOrders = async (req: Request, res: Response): Promise<void> => {
   try {
-    // We get the vendorId from req.user (JWT), fallback to query for backward compatibility during dev if needed
     const vendorId = (req as any).user?.id || parseInt(req.query.vendorId as string, 10);
+    const status = req.query.status as string;
 
-    if (!vendorId || isNaN(vendorId)) {
-      res.status(401).json({ success: false, message: 'vendorId is required' });
-      return;
+    let whereClause: any = {};
+    if (vendorId && !isNaN(vendorId)) {
+      whereClause.vendorId = vendorId;
+    }
+    if (status) {
+      whereClause.itemStatus = status;
     }
 
     const orderItems = await prisma.orderItem.findMany({
-      where: {
-        vendorId: vendorId
-      },
+      where: whereClause,
       include: {
         order: {
-          select: {
-            orderNumber: true,
-            createdAt: true,
-            status: true,
-            total: true,
-            companyName: true,
-            user: {
-              select: {
-                name: true,
-                email: true,
-                companyName: true
-              }
-            }
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            address: true
           }
         },
-        variant: {
-          include: {
-            product: {
-              select: {
-                name: true,
-                slug: true
-              }
-            }
-          }
-        }
+        product: true
       },
-      orderBy: {
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.status(200).json({ success: true, data: orderItems });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to fetch vendor orders', error: error.message });
+  }
+};
+
+export const getVendorOrderDetails = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const itemId = parseInt(req.params.itemId, 10);
+
+    const orderItem = await prisma.orderItem.findUnique({
+      where: { id: itemId },
+      include: {
         order: {
-          createdAt: 'desc'
-        }
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            address: true,
+            payment: true
+          }
+        },
+        product: true
       }
     });
 
-    res.status(200).json({
-      success: true,
-      data: orderItems
-    });
+    if (!orderItem) {
+      res.status(404).json({ success: false, message: 'Order item not found' });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: orderItem });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to fetch vendor orders', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch order details', error: error.message });
   }
 };
 
 export const updateOrderItemStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const itemId = parseInt(req.params.itemId, 10);
-    const { status, trackingNumber, courierName } = req.body;
+    const { status, trackingNumber, carrierName } = req.body;
 
-    if (isNaN(itemId)) {
-      res.status(400).json({ success: false, message: 'Invalid item ID' });
+    const validStatuses = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'];
+    if (!validStatuses.includes(status)) {
+      res.status(400).json({ success: false, message: 'Invalid status value' });
       return;
     }
 
-    const updatedItem = await prisma.$transaction(async (tx) => {
-      const item = await tx.orderItem.findUnique({ where: { id: itemId }, include: { variant: true } });
-      if (!item) throw new Error("Order item not found");
-
-      // Deplete inventory when SHIPPED
-      if (status === 'SHIPPED' && item.status !== 'SHIPPED') {
-        if (item.variant) {
-          const newStock = Math.max(0, item.variant.stockQty - item.quantity);
-          await tx.productVariant.update({
-            where: { id: item.variantId },
-            data: { stockQty: newStock }
-          });
-          
-          // Optionally trigger Low Stock Alert here if newStock < threshold
-          if (newStock <= 5) {
-            // NotificationService.sendLowStockAlert(...)
-            console.log(`[ALERT] Variant ${item.variant.sku} is low on stock (${newStock} remaining)`);
-          }
-        }
+    const updatedItem = await prisma.orderItem.update({
+      where: { id: itemId },
+      data: {
+        itemStatus: status,
+        ...(trackingNumber && { trackingNumber }),
+        ...(carrierName && { carrierName }),
+        ...(status === 'DELIVERED' && { deliveredAt: new Date() })
       }
+    });
 
-      // Generate EscrowHold when DELIVERED (Replaces basic VendorSettlement)
-      if (status === 'DELIVERED' && item.status !== 'DELIVERED') {
-        const itemGross = Number(item.priceAtPurchase) * item.quantity;
-        const commission = itemGross * 0.10; // 10% flat commission
-        const tds = itemGross * 0.01; // 1% TDS
-        const tcs = itemGross * 0.01; // 1% TCS
+    if (status === 'DELIVERED') {
+      await prisma.$transaction(async (tx) => {
+        const item = await tx.orderItem.findUnique({ where: { id: itemId } });
+        if (!item) return;
+
+        const itemGross = Number(item.price) * item.quantity;
+        const commissionRate = 0.05; // 5%
+        const commission = itemGross * commissionRate;
+        const tds = itemGross * 0.01; // 1%
+        const tcs = itemGross * 0.01; // 1%
         const itemNet = itemGross - commission - tds - tcs;
-        
-        const holdUntilDate = new Date();
-        holdUntilDate.setDate(holdUntilDate.getDate() + 7); // 7-day return window
 
-        // Check if an escrow hold for this order and vendor already exists
+        const holdUntilDate = new Date();
+        holdUntilDate.setDate(holdUntilDate.getDate() + 7);
+
+        const vId = item.vendorId || 1;
         const existingEscrow = await tx.escrowHold.findFirst({
-          where: { orderId: item.orderId, vendorId: item.vendorId }
+          where: { orderId: item.orderId, vendorId: vId }
         });
 
         if (existingEscrow) {
@@ -123,7 +120,7 @@ export const updateOrderItemStatus = async (req: Request, res: Response): Promis
         } else {
           await tx.escrowHold.create({
             data: {
-              vendorId: item.vendorId,
+              vendorId: vId,
               orderId: item.orderId,
               grossAmount: itemGross,
               commissionAmount: commission,
@@ -135,122 +132,11 @@ export const updateOrderItemStatus = async (req: Request, res: Response): Promis
             }
           });
         }
-      }
-
-      return tx.orderItem.update({
-        where: { id: itemId },
-        data: {
-          status,
-          ...(trackingNumber && { trackingNumber }),
-          ...(courierName && { courierName })
-        },
-        include: { order: { select: { userId: true } } }
       });
-    });
-
-    // Broadcast socket event to real-time clients
-    emitOrderStatusChange(updatedItem.orderId, status, updatedItem.order.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Order item updated successfully',
-      data: updatedItem
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to update order item', error: error.message });
-  }
-};
-
-export const generateInvoice = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const itemId = parseInt(req.params.itemId, 10);
-    const vendorId = (req as any).user?.id;
-
-    if (isNaN(itemId)) {
-      res.status(400).json({ success: false, message: 'Invalid item ID' });
-      return;
     }
 
-    const orderItem = await prisma.orderItem.findFirst({
-      where: { id: itemId, vendorId },
-      include: {
-        order: {
-          include: {
-            user: true,
-            address: true
-          }
-        },
-        variant: {
-          include: {
-            product: true
-          }
-        },
-        vendor: true
-      }
-    });
-
-    if (!orderItem) {
-      res.status(404).json({ success: false, message: 'Order item not found' });
-      return;
-    }
-
-    // Generate basic HTML Invoice string
-    const htmlInvoice = `
-      <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 40px; }
-            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }
-            .details { margin-top: 30px; display: flex; justify-content: space-between; }
-            table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            th { background-color: #f8f9fa; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>TAX INVOICE</h1>
-            <p>${orderItem.vendor?.companyName || 'Vendor'}</p>
-          </div>
-          <div class="details">
-            <div>
-              <h3>Billed To:</h3>
-              <p>${orderItem.order.companyName || orderItem.order.user.name}</p>
-              <p>${orderItem.order.address.addressLine1}, ${orderItem.order.address.city}</p>
-            </div>
-            <div>
-              <h3>Invoice Details:</h3>
-              <p><strong>Order #:</strong> ${orderItem.order.orderNumber}</p>
-              <p><strong>Date:</strong> ${new Date(orderItem.order.createdAt).toLocaleDateString()}</p>
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>SKU</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>${orderItem.variant.product.name}</td>
-                <td>${orderItem.variant.sku}</td>
-                <td>${orderItem.quantity}</td>
-                <td>₹${Number(orderItem.priceAtPurchase).toFixed(2)}</td>
-                <td>₹${(Number(orderItem.priceAtPurchase) * orderItem.quantity).toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p style="margin-top:40px; text-align:center;">Thank you for your business!</p>
-        </body>
-      </html>
-    `;
-
-    res.status(200).send(htmlInvoice);
+    res.status(200).json({ success: true, data: updatedItem, message: `Order item updated to ${status}` });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to generate invoice', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to update order status', error: error.message });
   }
 };

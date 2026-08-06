@@ -108,7 +108,6 @@ export const getProductBySlug = async (req: Request, res: Response) => {
       return;
     }
 
-    // Apply contract pricing if user has company contract
     if (user?.companyId) {
       const contract = await prisma.companyContract.findFirst({
         where: { companyId: user.companyId, productId: product.id, isActive: true }
@@ -145,7 +144,7 @@ export const createProduct = async (req: Request, res: Response) => {
         vendorId: (req as any).user?.id || 1,
         basePrice: parseFloat(basePrice),
         mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
-        sku: sku || `SKU-${Date.now()}`,
+        modelNumber: sku || `SKU-${Date.now()}`,
         description: description || '',
         approvalStatus: 'APPROVED',
         isActive: true,
