@@ -10,13 +10,11 @@ export const getProducts = async (req: Request, res: Response) => {
       deletedAt: null
     };
 
-    // Only filter by isActive & APPROVED for regular unauthenticated public users
     if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'VENDOR')) {
       where.isActive = true;
       where.approvalStatus = { in: ['APPROVED', 'LIVE'] };
     }
 
-    // Vendor Data Isolation
     if (user?.role === 'VENDOR') {
       where.vendorId = user.id;
     }
@@ -46,7 +44,6 @@ export const getProducts = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Contract Pricing for B2B Corporate Companies
     if (user?.companyId) {
       const contracts = await prisma.companyContract.findMany({
         where: { companyId: user.companyId, isActive: true }
@@ -144,6 +141,7 @@ export const createProduct = async (req: Request, res: Response) => {
         vendorId: (req as any).user?.id || 1,
         basePrice: parseFloat(basePrice),
         mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
+        gstPercent: 18.00,
         modelNumber: sku || `SKU-${Date.now()}`,
         description: description || '',
         approvalStatus: 'APPROVED',

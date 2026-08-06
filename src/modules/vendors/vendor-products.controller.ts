@@ -101,6 +101,7 @@ export const createVendorProduct = async (req: Request, res: Response): Promise<
         vendorId: vendorId ? parseInt(vendorId, 10) : 1,
         basePrice: parseFloat(basePrice),
         mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
+        gstPercent: 18.00,
         modelNumber: sku || `SKU-${Date.now()}`,
         description: description || '',
         approvalStatus: 'APPROVED',

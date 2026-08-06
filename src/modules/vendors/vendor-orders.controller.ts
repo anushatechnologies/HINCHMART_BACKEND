@@ -13,7 +13,7 @@ export const getVendorOrders = async (req: Request, res: Response): Promise<void
       whereClause.vendorId = vendorId;
     }
     if (status) {
-      whereClause.itemStatus = status;
+      whereClause.status = status;
     }
 
     const orderItems = await prisma.orderItem.findMany({
@@ -25,9 +25,13 @@ export const getVendorOrders = async (req: Request, res: Response): Promise<void
             address: true
           }
         },
-        product: true
+        variant: {
+          include: {
+            product: true
+          }
+        }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { id: 'desc' }
     });
 
     res.status(200).json({ success: true, data: orderItems });
@@ -50,7 +54,11 @@ export const getVendorOrderDetails = async (req: Request, res: Response): Promis
             payment: true
           }
         },
-        product: true
+        variant: {
+          include: {
+            product: true
+          }
+        }
       }
     });
 
@@ -79,10 +87,9 @@ export const updateOrderItemStatus = async (req: Request, res: Response): Promis
     const updatedItem = await prisma.orderItem.update({
       where: { id: itemId },
       data: {
-        itemStatus: status,
+        status: status,
         ...(trackingNumber && { trackingNumber }),
-        ...(carrierName && { carrierName }),
-        ...(status === 'DELIVERED' && { deliveredAt: new Date() })
+        ...(carrierName && { courierName: carrierName })
       }
     });
 
@@ -91,7 +98,7 @@ export const updateOrderItemStatus = async (req: Request, res: Response): Promis
         const item = await tx.orderItem.findUnique({ where: { id: itemId } });
         if (!item) return;
 
-        const itemGross = Number(item.price) * item.quantity;
+        const itemGross = Number(item.priceAtPurchase) * item.quantity;
         const commissionRate = 0.05; // 5%
         const commission = itemGross * commissionRate;
         const tds = itemGross * 0.01; // 1%
