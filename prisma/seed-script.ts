@@ -306,11 +306,11 @@ async function main() {
   }
 
   // 3. Ensure Master Supplier Vendor
-  let vendor = await prisma.vendor.findFirst({ where: { companyName: 'HinchMart Authorized Industrial Supplier' } });
+  let vendor = await prisma.vendor.findFirst({ where: { companyName: 'Anusha Bazaar Trading Co.' } });
   if (!vendor) {
     vendor = await prisma.vendor.create({
       data: {
-        companyName: 'HinchMart Authorized Industrial Supplier',
+        companyName: 'Anusha Bazaar Trading Co.',
         gstin: '37ABCDE1234F1Z5',
         contactEmail: 'supplier@hinchmart.com',
         contactPhone: '+919876543210',
