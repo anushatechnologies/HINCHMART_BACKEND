@@ -5,14 +5,21 @@ const prisma = new PrismaClient();
 
 export const getVendorProducts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const vendorId = (req as any).user?.id || parseInt(req.query.vendorId as string, 10);
+    // Priority: JWT token vendorId (authenticated seller) > query param vendorId (admin viewing)
+    const tokenVendorId = (req as any).user?.vendorId || (req as any).user?.id;
+    const queryVendorId = req.query.vendorId ? parseInt(req.query.vendorId as string, 10) : null;
+    const vendorId = tokenVendorId || queryVendorId;
+
     const status = req.query.status as string;
 
-    let whereClause: Prisma.ProductWhereInput = {};
-
-    if (vendorId && !isNaN(vendorId)) {
-      whereClause.vendorId = vendorId;
+    // STRICT filter: only return products belonging to this vendor
+    // If no vendorId, return empty (never leak other vendors' products)
+    if (!vendorId || isNaN(vendorId)) {
+      res.status(200).json({ success: true, data: [], message: 'No vendor context found' });
+      return;
     }
+
+    let whereClause: Prisma.ProductWhereInput = { vendorId };
 
     if (status === 'DELETED') {
       whereClause.deletedAt = { not: null };
@@ -25,7 +32,7 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
       }
     }
 
-    let products = await prisma.product.findMany({
+    const products = await prisma.product.findMany({
       where: whereClause,
       include: {
         category: true,
@@ -35,24 +42,12 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
       orderBy: { createdAt: 'desc' }
     });
 
-    if (products.length === 0 && status !== 'DELETED') {
-      products = await prisma.product.findMany({
-        where: { deletedAt: null, approvalStatus: 'APPROVED' },
-        include: {
-          category: true,
-          variants: true,
-          images: { where: { isPrimary: true } }
-        },
-        take: 1000,
-        orderBy: { createdAt: 'desc' }
-      });
-    }
-
-    res.status(200).json({ success: true, data: products });
+    res.status(200).json({ success: true, data: products, vendorId });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Failed to fetch products', error: error.message });
   }
 };
+
 
 export const getVendorProductById = async (req: Request, res: Response): Promise<void> => {
   try {
