@@ -3,6 +3,7 @@ import { getVendors, createVendor, updateVendorStatus, updateVendorKycStatus, de
 import { getVendorOrders, updateOrderItemStatus } from './vendor-orders.controller';
 import { getVendorProducts, getVendorProductById, createVendorProduct, updateVendorInventory } from './vendor-products.controller';
 import { getVendorCategories, requestCategoryApproval, getVendorBrands, requestBrandApproval } from './vendor-categories.controller';
+import { getAnalyticsOverview } from './vendor-analytics.controller';
 
 const router = Router();
 
@@ -29,6 +30,9 @@ router.post('/brands/request', requestBrandApproval);
 // Orders
 router.get('/orders', getVendorOrders);
 router.patch('/orders/:itemId/status', updateOrderItemStatus);
+
+// Analytics
+router.get('/analytics/overview', getAnalyticsOverview);
 
 // Admin endpoints for vendors
 router.get('/', getVendors);
