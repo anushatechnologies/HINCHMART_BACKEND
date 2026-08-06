@@ -123,7 +123,7 @@ export const getProductBySlug = async (req: Request, res: Response) => {
 
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { name, brand, categoryId, basePrice, mrp, sku, description, isRentable, rentPricePerDay, isSameDayDelivery } = req.body;
+    const { name, brand, categoryId, basePrice, mrp, sku, modelNumber, description, gstPercent, isRentable, rentPricePerDay, isSameDayDelivery } = req.body;
 
     if (!name || !categoryId || !basePrice) {
       res.status(400).json({ success: false, message: 'Name, Category, and Price are required' });
@@ -141,8 +141,8 @@ export const createProduct = async (req: Request, res: Response) => {
         vendorId: (req as any).user?.id || 1,
         basePrice: parseFloat(basePrice),
         mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
-        gstPercent: 18.00,
-        modelNumber: sku || `SKU-${Date.now()}`,
+        gstPercent: gstPercent ? parseFloat(gstPercent) : 18.00,
+        modelNumber: modelNumber || sku || `SKU-${Date.now()}`,
         description: description || '',
         approvalStatus: 'APPROVED',
         isActive: true,
@@ -161,15 +161,23 @@ export const createProduct = async (req: Request, res: Response) => {
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, brand, basePrice, mrp, isRentable, rentPricePerDay, isSameDayDelivery, stockStatus } = req.body;
+    const { 
+      name, brand, modelNumber, sku, categoryId, 
+      basePrice, mrp, gstPercent, description, 
+      isRentable, rentPricePerDay, isSameDayDelivery, stockStatus 
+    } = req.body;
 
     const product = await prisma.product.update({
       where: { id: parseInt(id, 10) },
       data: {
         ...(name && { name }),
         ...(brand && { brand }),
+        ...((modelNumber || sku) && { modelNumber: modelNumber || sku }),
+        ...(categoryId && { categoryId: parseInt(categoryId, 10) }),
         ...(basePrice !== undefined && { basePrice: parseFloat(basePrice) }),
         ...(mrp !== undefined && { mrp: parseFloat(mrp) }),
+        ...(gstPercent !== undefined && { gstPercent: parseFloat(gstPercent) }),
+        ...(description !== undefined && { description }),
         ...(isRentable !== undefined && { isRentable: Boolean(isRentable) }),
         ...(rentPricePerDay !== undefined && { rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null }),
         ...(isSameDayDelivery !== undefined && { isSameDayDelivery: Boolean(isSameDayDelivery) }),
