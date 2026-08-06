@@ -28,16 +28,12 @@ jobs:
     - name: Generate Prisma Client
       run: npx prisma generate
 
-    # - name: Run Linter (Optional)
-    #   run: npm run lint
-
-    # - name: Run Tests (Optional)
-    #   run: npm test
+    - name: Build TypeScript Project
+      run: npm run build
 
   deploy:
     name: Deploy to Production Server
     needs: build-and-test
-    # Only run deploy on push to main (not on PRs)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
@@ -56,24 +52,28 @@ jobs:
         script: |
           cd /home/ec2-user/project/hinchmart-backend
           
-          # Write the environment variables from GitHub Secrets to the .env file
-          echo "$ENV_FILE" > .env
+          # Write environment variables if provided
+          if [ -n "$ENV_FILE" ]; then
+            echo "$ENV_FILE" > .env
+          fi
           
-          # Write the Firebase Admin SDK credentials from GitHub Secrets
-          echo "$FIREBASE_JSON" > serviceAccountKey.json
+          if [ -n "$FIREBASE_JSON" ]; then
+            echo "$FIREBASE_JSON" > serviceAccountKey.json
+          fi
           
-          # Pull latest changes from GitHub
+          # Pull latest code
           git pull origin main
           
-          # Install only production dependencies (much faster and uses less RAM than npm ci)
-          npm install --omit=dev
+          # Install dependencies & build
+          npm install
           
-          # Apply database migrations & generate client
+          # Generate Prisma Client & seed database
           npx prisma generate
-          npx prisma db push --accept-data-loss
+          npx tsx prisma/seed-script.ts
           
-          # (npx tsc removed because dist folder is already pushed to GitHub)
+          # Build TypeScript
+          npm run build
           
-          # Restart the PM2 process gracefully, or start it if it doesn't exist
+          # Graceful PM2 restart
           pm2 restart hinchmart-api || pm2 start dist/server.js --name "hinchmart-api"
           pm2 save
