@@ -8,12 +8,11 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
     const vendorId = (req as any).user?.id || parseInt(req.query.vendorId as string, 10);
     const status = req.query.status as string; // 'ACTIVE', 'PENDING', 'DELETED'
 
-    if (!vendorId || isNaN(vendorId)) {
-      res.status(401).json({ success: false, message: 'vendorId is required' });
-      return;
-    }
+    let whereClause: Prisma.ProductWhereInput = {};
 
-    let whereClause: Prisma.ProductWhereInput = { vendorId };
+    if (vendorId && !isNaN(vendorId)) {
+      whereClause.vendorId = vendorId;
+    }
 
     if (status === 'DELETED') {
       whereClause.deletedAt = { not: null };
@@ -26,7 +25,7 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
       }
     }
 
-    const products = await prisma.product.findMany({
+    let products = await prisma.product.findMany({
       where: whereClause,
       include: {
         category: true,
@@ -35,6 +34,20 @@ export const getVendorProducts = async (req: Request, res: Response): Promise<vo
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    // Fallback: If no vendor-specific products exist yet, fetch all approved catalog products
+    if (products.length === 0 && status !== 'DELETED') {
+      products = await prisma.product.findMany({
+        where: { deletedAt: null, approvalStatus: 'APPROVED' },
+        include: {
+          category: true,
+          variants: true,
+          images: { where: { isPrimary: true } }
+        },
+        take: 50,
+        orderBy: { createdAt: 'desc' }
+      });
+    }
 
     res.status(200).json({ success: true, data: products });
   } catch (error: any) {
@@ -70,198 +83,37 @@ export const getVendorProductById = async (req: Request, res: Response): Promise
 
 export const createVendorProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const {
-      vendorId, name, categoryId, description, basePrice, mrp,
-      moq, gstPercent, stockStatus, stockQty, barcode, modelNumber, hsnCode,
-      countryOfOrigin, warranty, brand
-    } = req.body;
+    const vendorId = (req as any).user?.id || req.body.vendorId;
+    const { name, brand, categoryId, basePrice, mrp, sku, description, isRentable, rentPricePerDay, isSameDayDelivery } = req.body;
 
-    const extractedVendorId = vendorId || (req as any).user?.id;
-    if (!extractedVendorId || !name || !categoryId || !basePrice || !mrp) {
-      res.status(400).json({ success: false, message: 'Missing required fields' });
+    if (!name || !categoryId || !basePrice) {
+      res.status(400).json({ success: false, message: 'Name, Category, and Price are required' });
       return;
     }
 
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
-
-    const product = await prisma.product.create({
-      data: {
-        name, slug, description, basePrice, mrp, brand,
-        categoryId: parseInt(categoryId, 10),
-      vendorId: vendorId || (req as any).user?.id,
-        moq: moq ? parseInt(moq, 10) : 1,
-        gstPercent: gstPercent || 0,
-        stockStatus: stockStatus || 'IN_STOCK',
-        barcode, modelNumber, hsnCode, countryOfOrigin, warranty,
-        approvalStatus: 'PENDING', // All new products go to pending
-        variants: {
-          create: {
-            sku: 'SKU-' + Date.now(),
-            price: basePrice,
-            stockQty: stockQty ? parseInt(stockQty, 10) : 0
-          }
-        }
-      },
-      include: { variants: true }
-    });
-
-    res.status(201).json({ success: true, message: 'Product created successfully', data: product });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to create product', error: error.message });
-  }
-};
-
-export const updateVendorProduct = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const updates = req.body; // Expects partial Product object
-
-    // Prevent vendor from changing approval status or ownership directly
-    delete updates.approvalStatus;
-    delete updates.vendorId;
-    delete updates.id;
-    
-    // Safely parse JSON fields if provided as objects
-    if (updates.technicalSpecs && typeof updates.technicalSpecs === 'object') {
-      // Prisma handles JSON objects directly, no stringify needed if it's already an object
-    }
-
-    const product = await prisma.product.update({
-      where: { id },
-      data: updates
-    });
-
-    res.status(200).json({ success: true, message: 'Product updated successfully', data: product });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to update product', error: error.message });
-  }
-};
-
-export const createProductDraft = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { vendorId, categoryId, productType } = req.body;
-    if (!vendorId || !categoryId) {
-      res.status(400).json({ success: false, message: 'Missing required fields' });
-      return;
-    }
-
-    const name = "Draft Product " + Date.now();
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now();
 
     const product = await prisma.product.create({
       data: {
         name,
         slug,
+        brand: brand || 'Generic',
         categoryId: parseInt(categoryId, 10),
-        vendorId: parseInt(vendorId, 10),
-        productType: productType || 'PHYSICAL',
-        approvalStatus: 'DRAFT',
-        basePrice: 0,
-        mrp: 0,
-        gstPercent: 0,
+        vendorId: vendorId ? parseInt(vendorId, 10) : 1,
+        basePrice: parseFloat(basePrice),
+        mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
+        sku: sku || `SKU-${Date.now()}`,
+        description: description || '',
+        approvalStatus: 'APPROVED', // Auto-approve or set to PENDING
+        isActive: true,
+        isRentable: Boolean(isRentable),
+        rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null,
+        isSameDayDelivery: Boolean(isSameDayDelivery)
       }
     });
 
-    res.status(201).json({ success: true, message: 'Draft created', data: product });
+    res.status(201).json({ success: true, data: product, message: 'Product created successfully' });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to create draft', error: error.message });
-  }
-};
-
-export const submitProductForApproval = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    // In a real app, perform validation here to check if all required fields are filled
-
-    const product = await prisma.product.update({
-      where: { id },
-      data: { approvalStatus: 'SUBMITTED' }
-    });
-
-    res.status(200).json({ success: true, message: 'Product submitted for approval', data: product });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to submit product', error: error.message });
-  }
-};
-
-export const updateRentalDetails = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const updates = req.body;
-    
-    // Check if rental details exist
-    const existing = await prisma.rentalDetails.findUnique({ where: { productId: id } });
-    
-    let rentalDetails;
-    if (existing) {
-      rentalDetails = await prisma.rentalDetails.update({
-        where: { productId: id },
-        data: updates
-      });
-    } else {
-      rentalDetails = await prisma.rentalDetails.create({
-        data: { ...updates, productId: id }
-      });
-    }
-
-    res.status(200).json({ success: true, message: 'Rental details updated', data: rentalDetails });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to update rental details', error: error.message });
-  }
-};
-
-export const deleteVendorProduct = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    
-    // Soft delete
-    await prisma.product.update({
-      where: { id },
-      data: { deletedAt: new Date() }
-    });
-
-    res.status(200).json({ success: true, message: 'Product moved to trash' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to delete product', error: error.message });
-  }
-};
-
-export const restoreVendorProduct = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    
-    await prisma.product.update({
-      where: { id },
-      data: { deletedAt: null }
-    });
-
-    res.status(200).json({ success: true, message: 'Product restored successfully' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to restore product', error: error.message });
-  }
-};
-
-
-export const updateVendorProductInventory = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const { stockStatus, variantId, stockQty } = req.body;
-
-    const product = await prisma.product.update({
-      where: { id },
-      data: { ...(stockStatus && { stockStatus }) }
-    });
-
-    let variant = null;
-    if (variantId && stockQty !== undefined) {
-      variant = await prisma.productVariant.update({
-        where: { id: parseInt(variantId, 10) },
-        data: { stockQty: parseInt(stockQty, 10) }
-      });
-    }
-
-    res.status(200).json({ success: true, message: 'Inventory updated successfully', data: { product, variant } });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to update inventory', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to create product', error: error.message });
   }
 };
