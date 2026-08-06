@@ -161,14 +161,37 @@ export const createProduct = async (req: Request, res: Response) => {
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const { name, brand, basePrice, mrp, isRentable, rentPricePerDay, isSameDayDelivery, stockStatus } = req.body;
 
     const product = await prisma.product.update({
       where: { id: parseInt(id, 10) },
-      data: updateData
+      data: {
+        ...(name && { name }),
+        ...(brand && { brand }),
+        ...(basePrice !== undefined && { basePrice: parseFloat(basePrice) }),
+        ...(mrp !== undefined && { mrp: parseFloat(mrp) }),
+        ...(isRentable !== undefined && { isRentable: Boolean(isRentable) }),
+        ...(rentPricePerDay !== undefined && { rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null }),
+        ...(isSameDayDelivery !== undefined && { isSameDayDelivery: Boolean(isSameDayDelivery) }),
+        ...(stockStatus && { stockStatus })
+      }
     });
 
     res.status(200).json({ success: true, data: product, message: 'Product updated successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteProduct = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await prisma.product.update({
+      where: { id: parseInt(id, 10) },
+      data: { deletedAt: new Date(), isActive: false }
+    });
+
+    res.status(200).json({ success: true, message: 'Product deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
