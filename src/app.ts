@@ -123,8 +123,10 @@ app.post(['/api/upload', '/api/admin/upload'], uploadLocal.single('file'), (req:
     res.status(400).json({ success: false, message: 'No file uploaded' });
     return;
   }
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const fileUrl = `${protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+  const host = req.get('host') || 'api.hinchmart.com';
+  const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+  const protocol = isLocal ? 'http' : (req.headers['x-forwarded-proto'] || 'https');
+  const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
   res.json({ success: true, url: fileUrl, filename: req.file.filename });
 });
 
