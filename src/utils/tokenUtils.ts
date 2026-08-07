@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -24,7 +24,7 @@ export function generateAccessToken(payload: TokenPayload): string {
 
 /** Generate a random opaque refresh token (UUID) */
 export function generateRefreshTokenString(): string {
-  return uuidv4() + '-' + uuidv4(); // double UUID for extra entropy
+  return crypto.randomUUID() + '-' + crypto.randomUUID(); // double UUID for extra entropy
 }
 
 /** Store a refresh token in the database */

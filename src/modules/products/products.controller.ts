@@ -247,7 +247,8 @@ export const updateProduct = async (req: Request, res: Response) => {
           data: {
             productId: productIdInt,
             url: videoUrl.trim(),
-            title: `${product.name} Video`
+            title: `${product.name} Video`,
+            type: 'YOUTUBE'
           }
         });
       }
