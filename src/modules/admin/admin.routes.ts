@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDashboardStats, updateOrderStatus, getAllOrders, getCreditNotes, getDashboardChartData, triggerErpSync, getWalletTransactions, approveWalletTransaction, getSystemMetrics } from './admin.controller';
-import { getAllReviewsAdmin, updateReviewStatusAdmin } from '../reviews/reviews.controller';
+import { getAllReviewsAdmin, updateReviewStatusAdmin, deleteReviewAdmin } from '../reviews/reviews.controller';
 import { adminLogin } from './admin.auth.controller';
 import { requireAdmin } from '../../middlewares/auth';
 import { upload } from '../../middlewares/upload';
@@ -38,6 +38,8 @@ router.get('/credit-notes', getCreditNotes);
 // Reviews & Ratings
 router.get('/reviews', getAllReviewsAdmin);
 router.patch('/reviews/:id/status', updateReviewStatusAdmin);
+router.put('/reviews/:id', updateReviewStatusAdmin);
+router.delete('/reviews/:id', deleteReviewAdmin);
 
 // Warehouses & Inventory
 router.get('/warehouses', getAllWarehousesAdmin);
