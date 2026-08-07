@@ -10,7 +10,7 @@ import {
 export const adminLogin = async (req: Request, res: Response) => {
   try {
     const email = (req.body.email || '').trim().toLowerCase();
-    const password = req.body.password;
+    const password = (req.body.password || '').trim();
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
