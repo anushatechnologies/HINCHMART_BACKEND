@@ -83,17 +83,20 @@ const authLimiter = rateLimit({
 const corsOptions = {
   origin: function (origin: any, callback: any) {
     if (!origin) return callback(null, true);
-    
+
+    const isHinchmart = origin.endsWith('hinchmart.com') || origin.includes('localhost') || origin.includes('127.0.0.1');
+    if (isHinchmart) {
+      return callback(null, true);
+    }
+
     if (process.env.CORS_ORIGIN) {
       const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(url => url.trim());
       if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+        return callback(null, true);
       }
-    } else {
-      callback(null, true); // Fallback if CORS_ORIGIN is not set
     }
+
+    callback(null, true);
   },
   credentials: true
 };
