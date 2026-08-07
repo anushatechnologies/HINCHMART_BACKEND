@@ -17,6 +17,7 @@ import {
 } from './admin-brands.controller';
 import { getAllWarehousesAdmin } from './admin-warehouses.controller';
 import { getPendingProducts, reviewProduct } from './admin-products.controller';
+import bannerRoutes from '../banners/banners.routes';
 
 const router = Router();
 
@@ -29,6 +30,10 @@ router.use(requireAdmin);
 // Dashboard
 router.get('/dashboard/stats', getDashboardStats);
 router.get('/dashboard/charts', getDashboardChartData);
+router.get('/dashboard/chart-data', getDashboardChartData);
+
+// Banners
+router.use('/banners', bannerRoutes);
 
 // Orders & RFQs
 router.get('/orders', getAllOrders);

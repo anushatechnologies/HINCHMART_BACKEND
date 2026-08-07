@@ -118,7 +118,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
 // Generic Local Computer Upload Route (Images & Videos)
 import { uploadLocal } from './middlewares/upload';
-app.post('/api/upload', uploadLocal.single('file'), (req: Request, res: Response) => {
+app.post(['/api/upload', '/api/admin/upload'], uploadLocal.single('file'), (req: Request, res: Response) => {
   if (!req.file) {
     res.status(400).json({ success: false, message: 'No file uploaded' });
     return;
