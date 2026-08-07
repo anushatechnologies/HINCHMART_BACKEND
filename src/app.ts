@@ -101,6 +101,15 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
+
+// Auto-fix duplicate /api/api path bug if sent by cached frontend bundles
+app.use((req: Request, res: Response, next) => {
+  if (req.url.startsWith('/api/api/')) {
+    req.url = req.url.replace('/api/api/', '/api/');
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
