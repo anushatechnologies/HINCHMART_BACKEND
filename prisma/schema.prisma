@@ -1777,3 +1777,36 @@ model TaxCertificate {
 
   @@map("tax_certificates")
 }
+
+// ================= B2B MULTI-DEVICE BANNER MANAGEMENT ================= //
+
+model Banner {
+  id              Int       @id @default(autoincrement())
+  title           String
+  subtitle        String?
+  bannerType      String    @default("HERO_SLIDER") @map("banner_type")
+  position        String    @default("HOMEPAGE_TOP")
+  deviceTarget    String    @default("ALL") @map("device_target")
+  desktopImageUrl String?   @map("desktop_image_url")
+  tabletImageUrl  String?   @map("tablet_image_url")
+  mobileImageUrl  String?   @map("mobile_image_url")
+  imageUrl        String    @map("image_url")
+  linkUrl         String?   @map("link_url")
+  ctaText         String?   @map("cta_text")
+  categorySlug    String?   @map("category_slug")
+  brandSlug       String?   @map("brand_slug")
+  couponCode      String?   @map("coupon_code")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  priority        Int       @default(1)
+  sortOrder       Int       @default(0) @map("sort_order")
+  isActive        Boolean   @default(true) @map("is_active")
+  targetAudience  String    @default("ALL") @map("target_audience")
+  views           Int       @default(0)
+  clicks          Int       @default(0)
+  ctr             Float     @default(0.0)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("banners")
+}
