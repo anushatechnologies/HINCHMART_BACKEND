@@ -8,7 +8,7 @@ import fs from 'fs';
 dotenv.config();
 
 // Ensure local uploads directory exists
-const uploadDir = path.join(__dirname, '../../uploads');
+const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

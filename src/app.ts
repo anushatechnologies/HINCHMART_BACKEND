@@ -114,7 +114,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve uploaded static files
-app.use(['/uploads', '/api/uploads'], express.static(path.join(__dirname, '../../uploads')));
+app.use(['/uploads', '/api/uploads'], express.static(path.join(process.cwd(), 'uploads')));
 
 // Generic Local Computer Upload Route (Images & Videos)
 import { uploadLocal } from './middlewares/upload';
