@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'hinchmart_access_secret_2024!';
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'hinchmart_refresh_secret_2024!';
 
-const ACCESS_TOKEN_EXPIRY = '15m';
+const ACCESS_TOKEN_EXPIRY = '30d';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
 export interface TokenPayload {
