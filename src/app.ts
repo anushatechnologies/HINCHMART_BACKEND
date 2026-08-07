@@ -114,7 +114,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve uploaded static files
-app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+app.use(['/uploads', '/api/uploads'], express.static(path.join(__dirname, '../../uploads')));
 
 // Generic Local Computer Upload Route (Images & Videos)
 import { uploadLocal } from './middlewares/upload';
@@ -126,7 +126,7 @@ app.post(['/api/upload', '/api/admin/upload'], uploadLocal.single('file'), (req:
   const host = req.get('host') || 'api.hinchmart.com';
   const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
   const protocol = isLocal ? 'http' : (req.headers['x-forwarded-proto'] || 'https');
-  const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+  const fileUrl = `${protocol}://${host}/api/uploads/${req.file.filename}`;
   res.json({ success: true, url: fileUrl, filename: req.file.filename });
 });
 
