@@ -1,87 +1,56 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.requestBrandApproval = exports.getVendorBrands = exports.getVendorCategoryAttributes = exports.requestCategoryApproval = exports.getVendorCategoryRequests = void 0;
+exports.requestBrandApproval = exports.getVendorBrands = exports.requestCategoryApproval = exports.getVendorCategories = void 0;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
-// ─── Categories & Requests ────────────────────────────────────────────────────
-const getVendorCategoryRequests = async (req, res) => {
+// ─── Categories ───────────────────────────────────────────────────────────────
+const getVendorCategories = async (req, res) => {
     try {
-        const vendorId = parseInt(req.params.id, 10);
-        const requests = await prisma.vendorCategoryRequest.findMany({
-            where: { vendorId },
-            include: { category: true },
-            orderBy: { createdAt: 'desc' }
+        const categories = await prisma.category.findMany({
+            where: { parentId: null, isActive: true },
+            include: {
+                children: {
+                    where: { isActive: true }
+                }
+            },
+            orderBy: { name: 'asc' }
         });
-        res.status(200).json({ success: true, data: requests });
+        res.status(200).json({ success: true, data: categories });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-exports.getVendorCategoryRequests = getVendorCategoryRequests;
+exports.getVendorCategories = getVendorCategories;
 const requestCategoryApproval = async (req, res) => {
     try {
-        const vendorId = parseInt(req.params.id, 10);
-        const { categoryId, comments } = req.body;
-        if (!categoryId) {
-            res.status(400).json({ success: false, message: 'categoryId is required' });
+        const { name, icon, description } = req.body;
+        if (!name) {
+            res.status(400).json({ success: false, message: 'Category name is required' });
             return;
         }
-        const existing = await prisma.vendorCategoryRequest.findUnique({
-            where: { vendorId_categoryId: { vendorId, categoryId: parseInt(categoryId, 10) } }
-        });
-        if (existing) {
-            res.status(409).json({ success: false, message: 'Request already exists for this category' });
-            return;
-        }
-        const request = await prisma.vendorCategoryRequest.create({
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        const category = await prisma.category.create({
             data: {
-                vendorId,
-                categoryId: parseInt(categoryId, 10),
-                comments,
-                status: 'PENDING'
-            },
-            include: { category: true }
+                name,
+                slug,
+                description: description || null,
+                isActive: false // Pending approval
+            }
         });
-        res.status(201).json({ success: true, data: request });
+        res.status(201).json({ success: true, data: category, message: 'Category request submitted for approval' });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 exports.requestCategoryApproval = requestCategoryApproval;
-// ─── Attributes ───────────────────────────────────────────────────────────────
-const getVendorCategoryAttributes = async (req, res) => {
-    try {
-        const vendorId = parseInt(req.params.id, 10);
-        // Get categories the vendor is approved for
-        const approvedRequests = await prisma.vendorCategoryRequest.findMany({
-            where: { vendorId, status: 'APPROVED' },
-            select: { categoryId: true }
-        });
-        const categoryIds = approvedRequests.map(r => r.categoryId);
-        // Get attributes for these categories
-        const attributes = await prisma.attribute.findMany({
-            where: { categoryId: { in: categoryIds } },
-            include: {
-                category: { select: { name: true } },
-                values: true
-            }
-        });
-        res.status(200).json({ success: true, data: attributes });
-    }
-    catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-exports.getVendorCategoryAttributes = getVendorCategoryAttributes;
 // ─── Brands ───────────────────────────────────────────────────────────────────
 const getVendorBrands = async (req, res) => {
     try {
-        const vendorId = parseInt(req.params.id, 10);
-        const brands = await prisma.vendorBrand.findMany({
-            where: { vendorId },
-            orderBy: { createdAt: 'desc' }
+        const brands = await prisma.brand.findMany({
+            where: { status: 'ACTIVE' },
+            orderBy: { name: 'asc' }
         });
         res.status(200).json({ success: true, data: brands });
     }
@@ -92,28 +61,21 @@ const getVendorBrands = async (req, res) => {
 exports.getVendorBrands = getVendorBrands;
 const requestBrandApproval = async (req, res) => {
     try {
-        const vendorId = parseInt(req.params.id, 10);
         const { name, logoUrl } = req.body;
         if (!name) {
             res.status(400).json({ success: false, message: 'Brand name is required' });
             return;
         }
-        const existing = await prisma.vendorBrand.findUnique({
-            where: { vendorId_name: { vendorId, name } }
-        });
-        if (existing) {
-            res.status(409).json({ success: false, message: 'Brand already exists in your portfolio' });
-            return;
-        }
-        const brand = await prisma.vendorBrand.create({
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        const brand = await prisma.brand.create({
             data: {
-                vendorId,
                 name,
-                logoUrl,
+                slug,
+                logoUrl: logoUrl || null,
                 status: 'PENDING'
             }
         });
-        res.status(201).json({ success: true, data: brand });
+        res.status(201).json({ success: true, data: brand, message: 'Brand request submitted for approval' });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });

@@ -9,5 +9,6 @@ router.get('/', auth_1.optionalAuth, products_controller_1.getProducts);
 router.get('/:slug', auth_1.optionalAuth, products_controller_1.getProductBySlug);
 router.post('/', auth_1.optionalAuth, upload_1.upload.array('images', 5), products_controller_1.createProduct);
 router.patch('/:id', auth_1.optionalAuth, products_controller_1.updateProduct);
+router.delete('/:id', auth_1.optionalAuth, products_controller_1.deleteProduct);
 exports.default = router;
 //# sourceMappingURL=products.routes.js.map

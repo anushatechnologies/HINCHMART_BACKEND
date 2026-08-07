@@ -23,7 +23,7 @@ const getWarehouses = async (req, res) => {
 exports.getWarehouses = getWarehouses;
 const addWarehouse = async (req, res) => {
     try {
-        const { vendorId, name, address, city, state, pincode, contactNum, isPrimary } = req.body;
+        const { vendorId, name, address, city, state, pincode, contactNum, managerName, pickupAvailable, isPrimary } = req.body;
         if (!vendorId || !name || !address || !city || !state || !pincode || !contactNum) {
             res.status(400).json({ success: false, message: 'Missing required fields' });
             return;
@@ -44,6 +44,8 @@ const addWarehouse = async (req, res) => {
                 state,
                 pincode,
                 contactNum,
+                managerName: managerName || null,
+                pickupAvailable: pickupAvailable !== undefined ? pickupAvailable : true,
                 isPrimary: isPrimary || false
             }
         });

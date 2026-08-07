@@ -32,6 +32,30 @@ const getFinanceOverview = async (req, res) => {
             where: { vendorId, status: 'PENDING' }
         });
         const totalPending = pendingSettlements.reduce((sum, s) => sum + Number(s.netAmount || 0), 0);
+        // 4. Generate Weekly Chart Data (Last 4 Weeks)
+        const chartData = [];
+        const today = new Date();
+        for (let i = 3; i >= 0; i--) {
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - (i * 7 + 7));
+            const endOfWeek = new Date(today);
+            endOfWeek.setDate(today.getDate() - (i * 7));
+            let weekRev = 0;
+            let weekProfit = 0;
+            settlements.forEach(s => {
+                const d = new Date(s.createdAt);
+                if (d >= startOfWeek && d < endOfWeek) {
+                    const rev = Number(s.netAmount || 0) + Number(s.commissionAmount || 0);
+                    weekRev += rev;
+                    weekProfit += Number(s.netAmount || 0);
+                }
+            });
+            chartData.push({
+                name: `Week ${4 - i}`,
+                revenue: weekRev,
+                profit: weekProfit
+            });
+        }
         res.status(200).json({
             success: true,
             data: {
@@ -39,7 +63,8 @@ const getFinanceOverview = async (req, res) => {
                 totalRevenue: totalSettled + platformFees,
                 platformFees,
                 netProfit: totalSettled,
-                totalPending
+                totalPending,
+                chartData
             }
         });
     }

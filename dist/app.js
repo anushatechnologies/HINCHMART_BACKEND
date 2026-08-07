@@ -46,6 +46,11 @@ const contact_routes_1 = __importDefault(require("./modules/contact/contact.rout
 const chat_routes_1 = __importDefault(require("./modules/chat/chat.routes"));
 const returns_routes_1 = __importDefault(require("./modules/returns/returns.routes"));
 const analytics_routes_1 = __importDefault(require("./modules/analytics/analytics.routes"));
+const health_routes_1 = __importDefault(require("./modules/health/health.routes"));
+const audit_routes_1 = __importDefault(require("./modules/audit/audit.routes"));
+const credit_lines_routes_1 = __importDefault(require("./modules/credit/credit-lines.routes"));
+const brands_routes_1 = __importDefault(require("./modules/brands/brands.routes"));
+const cache_1 = require("./middlewares/cache");
 const errorHandler_1 = require("./middlewares/errorHandler");
 const app = (0, express_1.default)();
 // Security Middlewares
@@ -77,36 +82,53 @@ const corsOptions = {
     origin: function (origin, callback) {
         if (!origin)
             return callback(null, true);
+        const isHinchmart = origin.endsWith('hinchmart.com') || origin.includes('localhost') || origin.includes('127.0.0.1');
+        if (isHinchmart) {
+            return callback(null, true);
+        }
         if (process.env.CORS_ORIGIN) {
             const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(url => url.trim());
             if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
-                callback(null, true);
-            }
-            else {
-                callback(new Error('Not allowed by CORS'));
+                return callback(null, true);
             }
         }
-        else {
-            callback(null, true); // Fallback if CORS_ORIGIN is not set
-        }
+        callback(null, true);
     },
     credentials: true
 };
 app.use((0, cors_1.default)(corsOptions));
+// Auto-fix duplicate /api/api path bug if sent by cached frontend bundles
+app.use((req, res, next) => {
+    if (req.url.startsWith('/api/api/')) {
+        req.url = req.url.replace('/api/api/', '/api/');
+    }
+    next();
+});
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 // Serve uploaded static files
 app.use('/uploads', express_1.default.static(path_1.default.join(__dirname, '../../uploads')));
+// Generic Local Computer Upload Route (Images & Videos)
+const upload_1 = require("./middlewares/upload");
+app.post(['/api/upload', '/api/admin/upload'], upload_1.uploadLocal.single('file'), (req, res) => {
+    if (!req.file) {
+        res.status(400).json({ success: false, message: 'No file uploaded' });
+        return;
+    }
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const fileUrl = `${protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    res.json({ success: true, url: fileUrl, filename: req.file.filename });
+});
 // API Routes
 app.use('/api/auth', authLimiter, auth_routes_1.default);
-app.use('/api/categories', categories_routes_1.default);
+app.use('/api/categories', (0, cache_1.cacheMiddleware)(120), categories_routes_1.default);
 app.use('/api/products', products_routes_1.default);
 app.use('/api/cart', cart_routes_1.default);
 app.use('/api/addresses', addresses_routes_1.default);
 app.use('/api/orders', orders_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
 app.use('/api/wishlist', wishlist_routes_1.default);
-app.use('/api/banners', banners_routes_1.default);
+app.use('/api/banners', (0, cache_1.cacheMiddleware)(120), banners_routes_1.default);
 app.use('/api/coupons', coupons_routes_1.default);
 app.use('/api/rfq', rfq_routes_1.default);
 app.use('/api/content', content_routes_1.default);
@@ -133,9 +155,13 @@ app.use('/api/buying-guides', buying_guides_routes_1.default);
 app.use('/api/support', support_routes_1.default);
 app.use('/api/faq', faq_routes_1.default);
 app.use('/api/contact', contact_routes_1.default);
+app.use('/api/credit', credit_lines_routes_1.default);
+app.use('/api/brands', brands_routes_1.default);
 app.use('/api/chat', chat_routes_1.default);
 app.use('/api/returns', returns_routes_1.default);
 app.use('/api/analytics', analytics_routes_1.default);
+app.use('/api/health', health_routes_1.default);
+app.use('/api/admin', audit_routes_1.default);
 // Health Check Route
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'HINCHI API is healthy' });

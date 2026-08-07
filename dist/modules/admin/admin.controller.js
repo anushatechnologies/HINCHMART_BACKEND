@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerErpSync = exports.getDashboardChartData = exports.getCreditNotes = exports.getAllOrders = exports.updateOrderStatus = exports.getDashboardStats = void 0;
+exports.getSystemMetrics = exports.approveWalletTransaction = exports.getWalletTransactions = exports.triggerErpSync = exports.getDashboardChartData = exports.getCreditNotes = exports.getAllOrders = exports.updateOrderStatus = exports.getDashboardStats = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const notifications_1 = require("../../utils/notifications");
 const getDashboardStats = async (req, res) => {
@@ -191,4 +191,97 @@ const triggerErpSync = async (req, res) => {
     }
 };
 exports.triggerErpSync = triggerErpSync;
+const getWalletTransactions = async (req, res) => {
+    try {
+        const transactions = await prisma_1.default.customerWalletTransaction.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: {
+                user: { select: { companyName: true, name: true, id: true, companyId: true } }
+            }
+        });
+        const mapped = transactions.map(t => ({
+            id: `WTX-${t.id}`,
+            originalId: t.id,
+            user: t.user?.companyName || t.user?.name || 'Unknown User',
+            userId: t.userId,
+            companyId: t.user?.companyId,
+            type: t.type,
+            amount: Number(t.amount),
+            // We will mock balance calculation for this response
+            balance: t.status === 'COMPLETED' ? Number(t.amount) : 0,
+            date: t.createdAt.toISOString(),
+            status: t.status
+        }));
+        res.json({ success: true, data: mapped });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+exports.getWalletTransactions = getWalletTransactions;
+const approveWalletTransaction = async (req, res) => {
+    try {
+        const { id } = req.params; // format is WTX-123 or just 123
+        const actualId = parseInt(id.replace('WTX-', ''));
+        const transaction = await prisma_1.default.customerWalletTransaction.findUnique({
+            where: { id: actualId },
+            include: { user: true }
+        });
+        if (!transaction) {
+            return res.status(404).json({ success: false, message: 'Transaction not found' });
+        }
+        if (transaction.status === 'COMPLETED') {
+            return res.status(400).json({ success: false, message: 'Transaction already completed' });
+        }
+        // Update transaction to COMPLETED
+        await prisma_1.default.customerWalletTransaction.update({
+            where: { id: actualId },
+            data: { status: 'COMPLETED' }
+        });
+        // If B2B Corporate Credit, we can update Company availableCredit too
+        if (transaction.user?.companyId && transaction.type === 'CREDIT') {
+            await prisma_1.default.company.update({
+                where: { id: transaction.user.companyId },
+                data: { availableCredit: { increment: transaction.amount } }
+            });
+        }
+        res.json({ success: true, message: 'Transaction approved successfully' });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+exports.approveWalletTransaction = approveWalletTransaction;
+const getSystemMetrics = async (req, res) => {
+    try {
+        const [totalVendors, totalProducts, totalOrders, totalUsers] = await Promise.all([
+            prisma_1.default.vendor.count(),
+            prisma_1.default.product.count(),
+            prisma_1.default.order.count(),
+            prisma_1.default.user.count()
+        ]);
+        const memory = process.memoryUsage();
+        res.json({
+            success: true,
+            data: {
+                system: {
+                    uptimeSeconds: Math.floor(process.uptime()),
+                    nodeVersion: process.version,
+                    memoryHeapMB: Math.round((memory.heapUsed / 1024 / 1024) * 100) / 100,
+                    memoryRssMB: Math.round((memory.rss / 1024 / 1024) * 100) / 100,
+                },
+                platform: {
+                    totalVendors,
+                    totalProducts,
+                    totalOrders,
+                    totalUsers
+                }
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+exports.getSystemMetrics = getSystemMetrics;
 //# sourceMappingURL=admin.controller.js.map

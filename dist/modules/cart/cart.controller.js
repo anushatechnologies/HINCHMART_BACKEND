@@ -47,7 +47,7 @@ exports.getCart = getCart;
 const addItem = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { variantId, productId, quantity } = req.body;
+        const { variantId, productId, quantity, isRental, rentalStart, rentalEnd, operatorRequired } = req.body;
         const reqQty = parseInt(quantity) || 1;
         let targetVariantId = variantId ? parseInt(variantId) : null;
         // If no variantId is provided, look for the first variant of the product
@@ -105,7 +105,7 @@ const addItem = async (req, res) => {
                 message: `Cannot add more units. Total quantity in cart would exceed available stock of ${variant.stockQty} units.`
             });
         }
-        if (existingItem) {
+        if (existingItem && !isRental) {
             await prisma_1.default.cartItem.update({
                 where: { id: existingItem.id },
                 data: { quantity: newQty }
@@ -116,7 +116,11 @@ const addItem = async (req, res) => {
                 data: {
                     cartId: cart.id,
                     variantId: targetVariantId,
-                    quantity: newQty
+                    quantity: isRental ? reqQty : newQty, // Rental quantities don't merge blindly
+                    isRental: isRental || false,
+                    rentalStart: rentalStart ? new Date(rentalStart) : null,
+                    rentalEnd: rentalEnd ? new Date(rentalEnd) : null,
+                    operatorRequired: operatorRequired || false
                 }
             });
         }

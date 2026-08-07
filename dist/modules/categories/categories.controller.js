@@ -53,7 +53,7 @@ const updateCategory = async (req, res) => {
         if (isActive !== undefined)
             updateData.isActive = typeof isActive === 'string' ? isActive === 'true' : isActive;
         if (req.file) {
-            updateData.imageUrl = `/uploads/${req.file.filename}`;
+            updateData.imageUrl = req.file.path || req.file.secure_url || req.file.url;
         }
         const category = await prisma_1.default.category.update({
             where: { id },

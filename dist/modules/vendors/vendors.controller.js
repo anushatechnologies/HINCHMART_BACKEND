@@ -6,9 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyFirebaseVendor = exports.updateOnboardingProgress = exports.resetPassword = exports.forgotPassword = exports.verifyOtp = exports.updateVendorProfile = exports.deleteVendor = exports.updateVendorKycStatus = exports.updateVendorStatus = exports.loginVendor = exports.registerVendor = exports.createVendor = exports.getVendors = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const firebase_1 = require("../../utils/firebase");
-const JWT_SECRET = process.env.JWT_ACCESS_SECRET || 'secret123';
+const tokenUtils_1 = require("../../utils/tokenUtils");
 const getVendors = async (req, res) => {
     try {
         const vendors = await prisma_1.default.vendor.findMany({
@@ -107,16 +106,22 @@ const registerVendor = async (req, res) => {
                 panNumber,
                 aadhaarNumber,
                 cinNumber,
-                status: 'PENDING',
-                kycStatus: 'PENDING'
+                status: 'REGISTERED',
+                kycStatus: 'NOT_STARTED',
+                onboardingProgress: 10,
+                businessInfoStatus: 'PENDING'
             }
         });
-        const token = jsonwebtoken_1.default.sign({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' }, JWT_SECRET, { expiresIn: '7d' });
+        const accessToken = (0, tokenUtils_1.generateAccessToken)({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' });
+        const refreshToken = (0, tokenUtils_1.generateRefreshTokenString)();
+        await (0, tokenUtils_1.saveRefreshToken)(refreshToken, 'VENDOR', { vendorId: vendor.id });
         res.status(201).json({
             success: true,
             message: 'Seller registration successful',
             data: vendor,
-            token
+            accessToken,
+            refreshToken,
+            token: accessToken // backward compat
         });
     }
     catch (error) {
@@ -143,11 +148,15 @@ const loginVendor = async (req, res) => {
             res.status(401).json({ success: false, message: 'Invalid credentials' });
             return;
         }
-        const token = jsonwebtoken_1.default.sign({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' }, JWT_SECRET, { expiresIn: '7d' });
+        const accessToken = (0, tokenUtils_1.generateAccessToken)({ id: vendor.id, email: vendor.contactEmail, role: 'VENDOR' });
+        const refreshToken = (0, tokenUtils_1.generateRefreshTokenString)();
+        await (0, tokenUtils_1.saveRefreshToken)(refreshToken, 'VENDOR', { vendorId: vendor.id });
         res.status(200).json({
             success: true,
             message: 'Login successful',
-            token,
+            accessToken,
+            refreshToken,
+            token: accessToken, // backward compat
             data: vendor
         });
     }
@@ -182,7 +191,11 @@ const updateVendorKycStatus = async (req, res) => {
         const { kycStatus, kycRejectionReason } = req.body;
         const vendor = await prisma_1.default.vendor.update({
             where: { id: parseInt(id) },
-            data: { kycStatus, kycRejectionReason },
+            data: {
+                kycStatus,
+                kycRejectionReason,
+                ...(kycStatus === 'VERIFIED' ? { status: 'APPROVED' } : (kycStatus === 'REJECTED' ? { status: 'REJECTED' } : {}))
+            },
         });
         res.json({ success: true, message: 'Vendor KYC status updated successfully', data: vendor });
     }
@@ -363,17 +376,23 @@ const verifyFirebaseVendor = async (req, res) => {
                 }
             });
         }
-        const jwtToken = jsonwebtoken_1.default.sign({ id: vendor.id, role: 'VENDOR' }, JWT_SECRET, { expiresIn: '7d' });
+        const accessToken = (0, tokenUtils_1.generateAccessToken)({ id: vendor.id, role: 'VENDOR' });
+        const refreshToken = (0, tokenUtils_1.generateRefreshTokenString)();
+        await (0, tokenUtils_1.saveRefreshToken)(refreshToken, 'VENDOR', { vendorId: vendor.id });
         res.status(200).json({
             success: true,
             message: 'Vendor authentication successful',
-            token: jwtToken,
+            accessToken,
+            refreshToken,
+            token: accessToken, // backward compat
             data: {
                 id: vendor.id,
                 companyName: vendor.companyName,
                 email: vendor.contactEmail,
                 phone: vendor.contactPhone,
-                status: vendor.status
+                status: vendor.status,
+                kycStatus: vendor.kycStatus,
+                onboardingStep: vendor.onboardingStep
             }
         });
     }

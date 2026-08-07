@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.chatWithCopilot = void 0;
+exports.getAIRecommendations = exports.chatWithCopilot = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const genai_1 = require("@google/genai");
 const chatWithCopilot = async (req, res) => {
@@ -66,4 +66,45 @@ Answer the user's question accurately based ONLY on this context. If they ask ab
     }
 };
 exports.chatWithCopilot = chatWithCopilot;
+const getAIRecommendations = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        let preferredCategoryIds = [];
+        if (userId) {
+            // Find top categories purchased by this user
+            const userOrderItems = await prisma_1.default.orderItem.findMany({
+                where: { order: { userId } },
+                include: { variant: { include: { product: true } } },
+                take: 20
+            });
+            preferredCategoryIds = userOrderItems
+                .map(i => i.variant?.product?.categoryId)
+                .filter((id) => typeof id === 'number');
+        }
+        // Fetch recommended products matching category preferences or top rated
+        const recommendations = await prisma_1.default.product.findMany({
+            where: {
+                isActive: true,
+                approvalStatus: 'APPROVED',
+                ...(preferredCategoryIds.length > 0 ? { categoryId: { in: preferredCategoryIds } } : {})
+            },
+            include: {
+                images: { where: { isPrimary: true }, take: 1 },
+                category: { select: { id: true, name: true, slug: true } },
+                variants: { take: 1 }
+            },
+            take: 8,
+            orderBy: { createdAt: 'desc' }
+        });
+        res.status(200).json({
+            success: true,
+            message: 'AI Recommendations generated',
+            data: recommendations
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to generate recommendations', error: error.message });
+    }
+};
+exports.getAIRecommendations = getAIRecommendations;
 //# sourceMappingURL=ai.controller.js.map

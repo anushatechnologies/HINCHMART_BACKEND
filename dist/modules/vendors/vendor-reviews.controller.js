@@ -85,7 +85,7 @@ const getReviewAnalytics = async (req, res) => {
         const productIds = products.map((p) => p.id);
         const reviews = await prisma.review.findMany({
             where: { productId: { in: productIds } },
-            select: { rating: true, productId: true }
+            select: { rating: true, productId: true, createdAt: true }
         });
         if (reviews.length === 0) {
             res.status(200).json({ success: true, data: { averageRating: 0, totalReviews: 0, distribution: {} } });
@@ -104,12 +104,29 @@ const getReviewAnalytics = async (req, res) => {
             productScores[r.productId].count += 1;
         });
         const averageRating = (totalRating / reviews.length).toFixed(1);
+        // Generate chartData (e.g. 7 days average)
+        const chartData = [];
+        const today = new Date();
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(today.getDate() - i);
+            const startOfDay = new Date(d.setHours(0, 0, 0, 0));
+            const endOfDay = new Date(d.setHours(23, 59, 59, 999));
+            const dayReviews = reviews.filter(r => r.createdAt >= startOfDay && r.createdAt <= endOfDay);
+            const dayAvg = dayReviews.length > 0 ? dayReviews.reduce((sum, r) => sum + r.rating, 0) / dayReviews.length : 0;
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            chartData.push({
+                name: dayNames[startOfDay.getDay()],
+                rating: Number(dayAvg.toFixed(1))
+            });
+        }
         res.status(200).json({
             success: true,
             data: {
                 averageRating: parseFloat(averageRating),
                 totalReviews: reviews.length,
                 distribution,
+                chartData
             }
         });
     }

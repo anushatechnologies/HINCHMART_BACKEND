@@ -3,17 +3,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateProduct = exports.createProduct = exports.getProductBySlug = exports.getProducts = void 0;
+exports.deleteProduct = exports.updateProduct = exports.createProduct = exports.getProductBySlug = exports.getProducts = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const getProducts = async (req, res) => {
     try {
-        const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '20' } = req.query;
+        const { category, brand, search, minPrice, maxPrice, stockStatus, page = '1', limit = '1000' } = req.query;
         const user = req.user;
-        const where = { isActive: true };
-        // Vendor Data Isolation
+        const where = {
+            deletedAt: null
+        };
+        if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'VENDOR')) {
+            where.isActive = true;
+            where.approvalStatus = { in: ['APPROVED', 'LIVE'] };
+        }
         if (user?.role === 'VENDOR') {
             where.vendorId = user.id;
-            delete where.isActive; // Vendors should see their own draft/inactive products too
         }
         if (category)
             where.category = { slug: category };
@@ -36,13 +40,14 @@ const getProducts = async (req, res) => {
             where,
             include: {
                 category: true,
-                images: { where: { isPrimary: true } }
+                images: { orderBy: { sortOrder: 'asc' } },
+                videos: true,
+                rentalDetails: true
             },
             skip,
             take: parseInt(limit),
             orderBy: { createdAt: 'desc' }
         });
-        // ─── Phase 15: Apply Dynamic Contract Pricing ────────────────────────────
         if (user?.companyId) {
             const contracts = await prisma_1.default.companyContract.findMany({
                 where: { companyId: user.companyId, isActive: true }
@@ -51,14 +56,23 @@ const getProducts = async (req, res) => {
                 products = products.map((prod) => {
                     const contract = contracts.find(c => c.productId === prod.id);
                     if (contract) {
-                        prod.basePrice = contract.customPrice; // override basePrice
-                        prod.isContractPrice = true; // flag for frontend
+                        prod.basePrice = contract.customPrice;
+                        prod.isContractPrice = true;
                     }
                     return prod;
                 });
             }
         }
-        res.json({ success: true, data: products, total, page: parseInt(page), limit: parseInt(limit) });
+        res.status(200).json({
+            success: true,
+            data: products,
+            pagination: {
+                total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -72,51 +86,37 @@ const getProductBySlug = async (req, res) => {
         const product = await prisma_1.default.product.findUnique({
             where: { slug },
             include: {
-                category: { include: { parent: true } },
-                vendor: true,
-                variants: { include: { images: true } },
-                images: true,
-                // New B2B Relations
-                documents: true,
+                category: true,
+                images: { orderBy: { sortOrder: 'asc' } },
                 videos: true,
-                qnas: {
-                    where: { isAnswered: true },
-                    include: { user: { select: { name: true } } },
-                    take: 10
+                variants: true,
+                vendor: {
+                    select: { id: true, companyName: true, logoUrl: true }
                 },
-                relatedFrom: {
-                    include: {
-                        relatedProduct: {
-                            include: { images: { where: { isPrimary: true } } }
-                        }
-                    },
-                    take: 6
-                },
+                rentalDetails: true,
                 reviews: {
-                    where: { isApproved: true },
-                    include: { user: { select: { name: true } } },
-                    take: 5
+                    include: {
+                        user: { select: { name: true } }
+                    },
+                    take: 5,
+                    orderBy: { createdAt: 'desc' }
                 }
             }
         });
-        if (!product) {
-            return res.status(404).json({ success: false, message: 'Product not found' });
+        if (!product || product.deletedAt) {
+            res.status(404).json({ success: false, message: 'Product not found' });
+            return;
         }
-        // ─── Phase 15: Apply Dynamic Contract Pricing ────────────────────────────
         if (user?.companyId) {
-            const contract = await prisma_1.default.companyContract.findUnique({
-                where: {
-                    companyId_productId: { companyId: user.companyId, productId: product.id }
-                }
+            const contract = await prisma_1.default.companyContract.findFirst({
+                where: { companyId: user.companyId, productId: product.id, isActive: true }
             });
-            if (contract && contract.isActive) {
+            if (contract) {
                 product.basePrice = contract.customPrice;
                 product.isContractPrice = true;
-                // Optionally override variant prices if they have the same logic, 
-                // but for now we'll just override the product basePrice.
             }
         }
-        res.json({ success: true, data: product });
+        res.status(200).json({ success: true, data: product });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -125,48 +125,32 @@ const getProductBySlug = async (req, res) => {
 exports.getProductBySlug = getProductBySlug;
 const createProduct = async (req, res) => {
     try {
-        const { name, slug, brand, categoryId, description, basePrice, mrp, gstPercent, barcode, modelNumber, hsnCode, moq, countryOfOrigin, warranty, technicalSpecs, bulkPrice, dealerPrice, stockStatus, vendorId, features } = req.body;
-        const user = req.user;
-        const assignedVendorId = user?.role === 'VENDOR' ? user.id : (vendorId ? parseInt(vendorId) : null);
+        const { name, brand, categoryId, basePrice, mrp, sku, modelNumber, description, gstPercent, isRentable, rentPricePerDay, isSameDayDelivery } = req.body;
+        if (!name || !categoryId || !basePrice) {
+            res.status(400).json({ success: false, message: 'Name, Category, and Price are required' });
+            return;
+        }
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') + '-' + Date.now();
         const product = await prisma_1.default.product.create({
             data: {
                 name,
                 slug,
-                brand,
-                categoryId: parseInt(categoryId),
-                vendorId: assignedVendorId,
-                description,
+                brand: brand || 'Generic',
+                categoryId: parseInt(categoryId, 10),
+                vendorId: req.user?.id || 1,
                 basePrice: parseFloat(basePrice),
-                mrp: parseFloat(mrp),
-                gstPercent: parseFloat(gstPercent),
-                bulkPrice: bulkPrice ? parseFloat(bulkPrice) : null,
-                dealerPrice: dealerPrice ? parseFloat(dealerPrice) : null,
-                barcode: barcode || null,
-                modelNumber: modelNumber || null,
-                hsnCode: hsnCode || null,
-                moq: moq ? parseInt(moq) : 1,
-                countryOfOrigin: countryOfOrigin || null,
-                warranty: warranty || null,
-                technicalSpecs: technicalSpecs ? (typeof technicalSpecs === 'string' ? JSON.parse(technicalSpecs) : technicalSpecs) : null,
-                features: features ? (typeof features === 'string' ? JSON.parse(features) : features) : null,
-                stockStatus: stockStatus || 'IN_STOCK',
+                mrp: mrp ? parseFloat(mrp) : parseFloat(basePrice) * 1.2,
+                gstPercent: gstPercent ? parseFloat(gstPercent) : 18.00,
+                modelNumber: modelNumber || sku || `SKU-${Date.now()}`,
+                description: description || '',
+                approvalStatus: 'APPROVED',
+                isActive: true,
+                isRentable: Boolean(isRentable),
+                rentPricePerDay: rentPricePerDay ? parseFloat(rentPricePerDay) : null,
+                isSameDayDelivery: Boolean(isSameDayDelivery)
             }
         });
-        if (req.files && Array.isArray(req.files)) {
-            const imagesData = req.files.map((file, index) => ({
-                productId: product.id,
-                url: file.path,
-                isPrimary: index === 0,
-            }));
-            if (imagesData.length > 0) {
-                await prisma_1.default.productImage.createMany({ data: imagesData });
-            }
-        }
-        const createdProduct = await prisma_1.default.product.findUnique({
-            where: { id: product.id },
-            include: { images: true, category: true }
-        });
-        res.status(201).json({ success: true, data: createdProduct });
+        res.status(201).json({ success: true, data: product, message: 'Product created successfully' });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -176,58 +160,134 @@ exports.createProduct = createProduct;
 const updateProduct = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, brand, description, basePrice, mrp, gstPercent, bulkPrice, dealerPrice, stockStatus, isActive, isRentable, rentPricePerDay, minRentalDays, isSameDayDelivery, moq, barcode, modelNumber, hsnCode, countryOfOrigin, warranty, technicalSpecs, features } = req.body;
-        const data = {};
-        if (name !== undefined)
-            data.name = name;
+        const { name, slug, brand, productType, modelNumber, sku, categoryId, vendorId, barcode, hsnCode, moq, countryOfOrigin, warranty, basePrice, mrp, bulkPrice, dealerPrice, gstPercent, stockStatus, approvalStatus, isActive, isRentable, rentPricePerDay, minRentalDays, isSameDayDelivery, description, technicalSpecs, features, metaTitle, metaDescription, metaKeywords, imageUrls, videoUrl } = req.body;
+        const productIdInt = parseInt(id, 10);
+        const updateData = {};
+        if (name)
+            updateData.name = name;
+        if (slug)
+            updateData.slug = slug;
         if (brand !== undefined)
-            data.brand = brand;
-        if (description !== undefined)
-            data.description = description;
-        if (basePrice !== undefined)
-            data.basePrice = parseFloat(basePrice);
-        if (mrp !== undefined)
-            data.mrp = parseFloat(mrp);
-        if (gstPercent !== undefined)
-            data.gstPercent = parseFloat(gstPercent);
-        if (bulkPrice !== undefined)
-            data.bulkPrice = bulkPrice ? parseFloat(bulkPrice) : null;
-        if (dealerPrice !== undefined)
-            data.dealerPrice = dealerPrice ? parseFloat(dealerPrice) : null;
-        if (stockStatus !== undefined)
-            data.stockStatus = stockStatus;
-        if (isActive !== undefined)
-            data.isActive = isActive === true || isActive === 'true';
-        if (moq !== undefined)
-            data.moq = parseInt(moq);
-        if (isRentable !== undefined)
-            data.isRentable = isRentable === true || isRentable === 'true';
-        if (rentPricePerDay !== undefined)
-            data.rentPricePerDay = rentPricePerDay ? parseFloat(rentPricePerDay) : null;
-        if (minRentalDays !== undefined)
-            data.minRentalDays = minRentalDays ? parseInt(minRentalDays) : null;
-        if (isSameDayDelivery !== undefined)
-            data.isSameDayDelivery = isSameDayDelivery === true || isSameDayDelivery === 'true';
+            updateData.brand = brand;
+        if (productType)
+            updateData.productType = productType;
+        if (modelNumber || sku)
+            updateData.modelNumber = modelNumber || sku;
+        if (categoryId)
+            updateData.categoryId = parseInt(categoryId, 10);
+        if (vendorId)
+            updateData.vendorId = parseInt(vendorId, 10);
         if (barcode !== undefined)
-            data.barcode = barcode || null;
-        if (modelNumber !== undefined)
-            data.modelNumber = modelNumber || null;
+            updateData.barcode = barcode;
         if (hsnCode !== undefined)
-            data.hsnCode = hsnCode || null;
+            updateData.hsnCode = hsnCode;
+        if (moq !== undefined)
+            updateData.moq = parseInt(moq, 10);
         if (countryOfOrigin !== undefined)
-            data.countryOfOrigin = countryOfOrigin || null;
+            updateData.countryOfOrigin = countryOfOrigin;
         if (warranty !== undefined)
-            data.warranty = warranty || null;
+            updateData.warranty = warranty;
+        if (basePrice !== undefined)
+            updateData.basePrice = parseFloat(basePrice);
+        if (mrp !== undefined)
+            updateData.mrp = parseFloat(mrp);
+        if (bulkPrice !== undefined)
+            updateData.bulkPrice = bulkPrice ? parseFloat(bulkPrice) : null;
+        if (dealerPrice !== undefined)
+            updateData.dealerPrice = dealerPrice ? parseFloat(dealerPrice) : null;
+        if (gstPercent !== undefined)
+            updateData.gstPercent = parseFloat(gstPercent);
+        if (stockStatus)
+            updateData.stockStatus = stockStatus;
+        if (approvalStatus)
+            updateData.approvalStatus = approvalStatus;
+        if (isActive !== undefined)
+            updateData.isActive = Boolean(isActive);
+        if (isRentable !== undefined)
+            updateData.isRentable = Boolean(isRentable);
+        if (rentPricePerDay !== undefined)
+            updateData.rentPricePerDay = rentPricePerDay ? parseFloat(rentPricePerDay) : null;
+        if (minRentalDays !== undefined)
+            updateData.minRentalDays = minRentalDays ? parseInt(minRentalDays, 10) : null;
+        if (isSameDayDelivery !== undefined)
+            updateData.isSameDayDelivery = Boolean(isSameDayDelivery);
+        if (description !== undefined)
+            updateData.description = description;
         if (technicalSpecs !== undefined)
-            data.technicalSpecs = technicalSpecs ? (typeof technicalSpecs === 'string' ? JSON.parse(technicalSpecs) : technicalSpecs) : null;
+            updateData.technicalSpecs = typeof technicalSpecs === 'string' ? technicalSpecs : JSON.stringify(technicalSpecs);
         if (features !== undefined)
-            data.features = features ? (typeof features === 'string' ? JSON.parse(features) : features) : null;
-        const updated = await prisma_1.default.product.update({ where: { id: parseInt(id) }, data, include: { images: true, category: true } });
-        res.json({ success: true, data: updated });
+            updateData.features = typeof features === 'string' ? features : JSON.stringify(features);
+        if (metaTitle !== undefined)
+            updateData.metaTitle = metaTitle;
+        if (metaDescription !== undefined)
+            updateData.metaDescription = metaDescription;
+        if (metaKeywords !== undefined)
+            updateData.metaKeywords = metaKeywords;
+        const product = await prisma_1.default.product.update({
+            where: { id: productIdInt },
+            data: updateData,
+            include: {
+                category: true,
+                images: true,
+                videos: true
+            }
+        });
+        // Handle Image URLs update if provided
+        if (Array.isArray(imageUrls)) {
+            // Delete existing images and recreate
+            await prisma_1.default.productImage.deleteMany({ where: { productId: productIdInt } });
+            if (imageUrls.length > 0) {
+                await prisma_1.default.productImage.createMany({
+                    data: imageUrls.map((url, index) => ({
+                        productId: productIdInt,
+                        url,
+                        isPrimary: index === 0,
+                        sortOrder: index
+                    }))
+                });
+            }
+        }
+        // Handle Video URL update if provided
+        if (videoUrl !== undefined) {
+            await prisma_1.default.productVideo.deleteMany({ where: { productId: productIdInt } });
+            if (videoUrl && videoUrl.trim()) {
+                await prisma_1.default.productVideo.create({
+                    data: {
+                        productId: productIdInt,
+                        url: videoUrl.trim(),
+                        title: `${product.name} Video`,
+                        type: 'YOUTUBE'
+                    }
+                });
+            }
+        }
+        const reFetched = await prisma_1.default.product.findUnique({
+            where: { id: productIdInt },
+            include: {
+                category: true,
+                images: { orderBy: { sortOrder: 'asc' } },
+                videos: true
+            }
+        });
+        res.status(200).json({ success: true, data: reFetched, message: 'Product updated successfully' });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 exports.updateProduct = updateProduct;
+const deleteProduct = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma_1.default.product.update({
+            where: { id: parseInt(id, 10) },
+            data: { deletedAt: new Date(), isActive: false }
+        });
+        res.status(200).json({ success: true, message: 'Product deleted successfully' });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+exports.deleteProduct = deleteProduct;
 //# sourceMappingURL=products.controller.js.map

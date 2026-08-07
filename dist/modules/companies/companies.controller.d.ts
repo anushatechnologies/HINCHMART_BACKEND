@@ -8,4 +8,5 @@ export declare const assignUserToCompany: (req: Request, res: Response) => Promi
 export declare const getCompanyContracts: (req: Request, res: Response) => Promise<void>;
 export declare const addCompanyContract: (req: Request, res: Response) => Promise<void>;
 export declare const deleteCompanyContract: (req: Request, res: Response) => Promise<void>;
+export declare const deleteCompanyAdmin: (req: Request, res: Response) => Promise<void>;
 //# sourceMappingURL=companies.controller.d.ts.map

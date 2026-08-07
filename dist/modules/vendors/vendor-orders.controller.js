@@ -1,90 +1,141 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateOrderItemStatus = exports.getVendorOrders = void 0;
+exports.updateOrderItemStatus = exports.getVendorOrderDetails = exports.getVendorOrders = void 0;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 const getVendorOrders = async (req, res) => {
     try {
-        // Note: In a real implementation, you'd get the vendorId from req.user (JWT)
-        // For MVP, we pass it via query param or header. Let's assume query for now, or token.
-        // If we use JWT, we need authMiddleware. Let's mock with query `vendorId`.
-        const vendorId = parseInt(req.query.vendorId, 10);
-        if (isNaN(vendorId)) {
-            res.status(400).json({ success: false, message: 'vendorId is required' });
-            return;
+        const vendorId = req.user?.id || parseInt(req.query.vendorId, 10);
+        const status = req.query.status;
+        let whereClause = {};
+        if (vendorId && !isNaN(vendorId)) {
+            whereClause.vendorId = vendorId;
+        }
+        if (status) {
+            whereClause.status = status;
         }
         const orderItems = await prisma.orderItem.findMany({
-            where: {
-                vendorId: vendorId
-            },
+            where: whereClause,
             include: {
                 order: {
-                    select: {
-                        orderNumber: true,
-                        createdAt: true,
-                        status: true,
-                        total: true,
-                        companyName: true,
-                        user: {
-                            select: {
-                                name: true,
-                                email: true,
-                                companyName: true
-                            }
-                        }
+                    include: {
+                        user: { select: { id: true, name: true, email: true, phone: true } },
+                        address: true
                     }
                 },
                 variant: {
                     include: {
-                        product: {
-                            select: {
-                                name: true,
-                                slug: true
-                            }
-                        }
+                        product: true
                     }
                 }
             },
-            orderBy: {
-                order: {
-                    createdAt: 'desc'
-                }
-            }
+            orderBy: { id: 'desc' }
         });
-        res.status(200).json({
-            success: true,
-            data: orderItems
-        });
+        res.status(200).json({ success: true, data: orderItems });
     }
     catch (error) {
         res.status(500).json({ success: false, message: 'Failed to fetch vendor orders', error: error.message });
     }
 };
 exports.getVendorOrders = getVendorOrders;
+const getVendorOrderDetails = async (req, res) => {
+    try {
+        const itemId = parseInt(req.params.itemId, 10);
+        const orderItem = await prisma.orderItem.findUnique({
+            where: { id: itemId },
+            include: {
+                order: {
+                    include: {
+                        user: { select: { id: true, name: true, email: true, phone: true } },
+                        address: true,
+                        payment: true
+                    }
+                },
+                variant: {
+                    include: {
+                        product: true
+                    }
+                }
+            }
+        });
+        if (!orderItem) {
+            res.status(404).json({ success: false, message: 'Order item not found' });
+            return;
+        }
+        res.status(200).json({ success: true, data: orderItem });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch order details', error: error.message });
+    }
+};
+exports.getVendorOrderDetails = getVendorOrderDetails;
 const updateOrderItemStatus = async (req, res) => {
     try {
         const itemId = parseInt(req.params.itemId, 10);
-        const { status, trackingNumber, courierName } = req.body;
-        if (isNaN(itemId)) {
-            res.status(400).json({ success: false, message: 'Invalid item ID' });
+        const { status, trackingNumber, carrierName } = req.body;
+        const validStatuses = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'];
+        if (!validStatuses.includes(status)) {
+            res.status(400).json({ success: false, message: 'Invalid status value' });
             return;
         }
         const updatedItem = await prisma.orderItem.update({
             where: { id: itemId },
             data: {
-                status,
+                status: status,
                 ...(trackingNumber && { trackingNumber }),
-                ...(courierName && { courierName })
+                ...(carrierName && { courierName: carrierName })
             }
         });
-        res.status(200).json({
-            success: true,
-            message: 'Order item updated successfully',
-            data: updatedItem
-        });
+        if (status === 'DELIVERED') {
+            await prisma.$transaction(async (tx) => {
+                const item = await tx.orderItem.findUnique({ where: { id: itemId } });
+                if (!item)
+                    return;
+                const itemGross = Number(item.priceAtPurchase) * item.quantity;
+                const commissionRate = 0.05; // 5%
+                const commission = itemGross * commissionRate;
+                const tds = itemGross * 0.01; // 1%
+                const tcs = itemGross * 0.01; // 1%
+                const itemNet = itemGross - commission - tds - tcs;
+                const holdUntilDate = new Date();
+                holdUntilDate.setDate(holdUntilDate.getDate() + 7);
+                const vId = item.vendorId || 1;
+                const existingEscrow = await tx.escrowHold.findFirst({
+                    where: { orderId: item.orderId, vendorId: vId }
+                });
+                if (existingEscrow) {
+                    await tx.escrowHold.update({
+                        where: { id: existingEscrow.id },
+                        data: {
+                            grossAmount: Number(existingEscrow.grossAmount) + itemGross,
+                            commissionAmount: Number(existingEscrow.commissionAmount) + commission,
+                            tdsAmount: Number(existingEscrow.tdsAmount) + tds,
+                            tcsAmount: Number(existingEscrow.tcsAmount) + tcs,
+                            netPayoutAmount: Number(existingEscrow.netPayoutAmount) + itemNet,
+                        }
+                    });
+                }
+                else {
+                    await tx.escrowHold.create({
+                        data: {
+                            vendorId: vId,
+                            orderId: item.orderId,
+                            grossAmount: itemGross,
+                            commissionAmount: commission,
+                            tdsAmount: tds,
+                            tcsAmount: tcs,
+                            netPayoutAmount: itemNet,
+                            holdUntilDate: holdUntilDate,
+                            escrowStatus: 'HELD'
+                        }
+                    });
+                }
+            });
+        }
+        res.status(200).json({ success: true, data: updatedItem, message: `Order item updated to ${status}` });
     }
     catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to update order item', error: error.message });
+        res.status(500).json({ success: false, message: 'Failed to update order status', error: error.message });
     }
 };
 exports.updateOrderItemStatus = updateOrderItemStatus;

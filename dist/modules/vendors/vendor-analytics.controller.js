@@ -41,9 +41,15 @@ const getAnalyticsOverview = async (req, res) => {
                     lowStockCount++;
             });
         });
-        // 3. Customer Count
-        const uniqueUserIds = new Set(orderItems.map(item => item.order.userId));
-        const totalCustomers = uniqueUserIds.size;
+        // 3. Customer Count & Repeat Customers
+        const userOrderCounts = {};
+        orderItems.forEach(item => {
+            const uid = item.order.userId;
+            userOrderCounts[uid] = (userOrderCounts[uid] || 0) + 1;
+        });
+        const uniqueUserIds = Object.keys(userOrderCounts);
+        const totalCustomers = uniqueUserIds.length;
+        const repeatCustomers = Object.values(userOrderCounts).filter(count => count > 1).length;
         // 4. Rentals & Service Bookings
         const rentals = await prisma.rentalBooking.findMany({
             where: { vendorId },
@@ -83,9 +89,16 @@ const getAnalyticsOverview = async (req, res) => {
                     lowStockCount
                 },
                 customers: {
-                    totalCustomers
+                    totalCustomers,
+                    repeatCustomers
                 },
                 services: {
+                    activeRentals,
+                    rentalRevenue,
+                    totalServiceBookings,
+                    serviceRevenue
+                },
+                specialty: {
                     activeRentals,
                     rentalRevenue,
                     totalServiceBookings,

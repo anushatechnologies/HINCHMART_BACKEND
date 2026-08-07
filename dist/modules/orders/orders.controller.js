@@ -120,7 +120,11 @@ const checkout = async (req, res) => {
                     create: cart.items.map(item => ({
                         variantId: item.variantId,
                         quantity: item.quantity,
-                        priceAtPurchase: item.activePrice || item.variant.price
+                        priceAtPurchase: item.activePrice || item.variant.price,
+                        isRental: item.isRental,
+                        rentalStart: item.rentalStart,
+                        rentalEnd: item.rentalEnd,
+                        operatorRequired: item.operatorRequired
                     }))
                 },
                 companyId: cart.user.companyId || null,

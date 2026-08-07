@@ -8,6 +8,7 @@ router.get('/testimonials', content_controller_1.getTestimonials);
 router.get('/blogs', content_controller_1.getBlogs);
 router.get('/deals', content_controller_1.getActiveDeals);
 router.get('/privacy-policy', content_controller_1.getPrivacyPolicy);
+router.get('/privacy-policies', content_controller_1.getPrivacyPolicy); // Added alias as requested
 // Legal & Corporate Pages
 router.get('/pages/:slug', content_controller_1.getPageContent);
 router.put('/pages/:slug', auth_1.requireAuth, content_controller_1.updatePageContent); // Admin only

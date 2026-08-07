@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteCompanyContract = exports.addCompanyContract = exports.getCompanyContracts = exports.assignUserToCompany = exports.getMyCompany = exports.registerCompany = exports.updateCompanyAdmin = exports.getAllCompaniesAdmin = exports.createCompany = void 0;
+exports.deleteCompanyAdmin = exports.deleteCompanyContract = exports.addCompanyContract = exports.getCompanyContracts = exports.assignUserToCompany = exports.getMyCompany = exports.registerCompany = exports.updateCompanyAdmin = exports.getAllCompaniesAdmin = exports.createCompany = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 // ─── ADMIN: Create a new company ─────────────────────────────────────────────
 const createCompany = async (req, res) => {
@@ -215,4 +215,18 @@ const deleteCompanyContract = async (req, res) => {
     }
 };
 exports.deleteCompanyContract = deleteCompanyContract;
+// ─── ADMIN: Delete Company ───────────────────────────────────────────────────
+const deleteCompanyAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma_1.default.company.delete({
+            where: { id: parseInt(id) }
+        });
+        res.json({ success: true, message: 'Company deleted successfully.' });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+exports.deleteCompanyAdmin = deleteCompanyAdmin;
 //# sourceMappingURL=companies.controller.js.map

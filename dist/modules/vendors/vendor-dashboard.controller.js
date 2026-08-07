@@ -12,6 +12,9 @@ const getDashboardHome = async (req, res) => {
             res.status(400).json({ success: false, message: 'Invalid vendor ID' });
             return;
         }
+        const vendor = await prisma.vendor.findUnique({
+            where: { id: vendorId }
+        });
         // 1. Fetch KPI Data
         const orderItems = await prisma.orderItem.findMany({
             where: { vendorId },
@@ -32,6 +35,25 @@ const getDashboardHome = async (req, res) => {
         const activeProducts = await prisma.product.count({
             where: { vendorId, isActive: true }
         });
+        // Sparkline Trends (Last 7 Days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const recentOrderItems = await prisma.orderItem.findMany({
+            where: { vendorId, order: { createdAt: { gte: sevenDaysAgo } } },
+            include: { order: { select: { createdAt: true } } }
+        });
+        const revenueSparkline = new Array(7).fill(0);
+        const ordersSparkline = new Array(7).fill(0);
+        const today = new Date();
+        recentOrderItems.forEach(item => {
+            const d = item.order.createdAt;
+            const diffDays = Math.floor((today.getTime() - d.getTime()) / (1000 * 3600 * 24));
+            if (diffDays >= 0 && diffDays < 7) {
+                revenueSparkline[6 - diffDays] += Number(item.priceAtPurchase) * item.quantity;
+                ordersSparkline[6 - diffDays] += 1;
+            }
+        });
+        const formatSparkline = (arr) => arr.map(value => ({ value }));
         // 2. Recent Orders (unique orders)
         const recentOrdersRaw = await prisma.order.findMany({
             where: { items: { some: { vendorId } } },
@@ -84,8 +106,15 @@ const getDashboardHome = async (req, res) => {
                     activeProducts,
                     pendingOrders
                 },
+                trends: {
+                    revenue: formatSparkline(revenueSparkline),
+                    orders: formatSparkline(ordersSparkline),
+                    products: [{ value: activeProducts }], // Flat line for now
+                    pending: [{ value: pendingOrders }] // Flat line for now
+                },
                 recentOrders,
-                topProducts
+                topProducts,
+                vendorProfile: vendor
             }
         });
     }

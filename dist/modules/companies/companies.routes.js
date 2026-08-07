@@ -12,6 +12,7 @@ router.post('/my-company/users', auth_1.requireAuth, companies_controller_1.assi
 router.post('/admin/companies', auth_1.requireAuth, companies_controller_1.createCompany);
 router.get('/admin/companies', auth_1.requireAuth, companies_controller_1.getAllCompaniesAdmin);
 router.put('/admin/companies/:id', auth_1.requireAuth, companies_controller_1.updateCompanyAdmin);
+router.delete('/admin/companies/:id', auth_1.requireAuth, companies_controller_1.deleteCompanyAdmin);
 // Admin Contract routes
 router.get('/admin/companies/:id/contracts', auth_1.requireAuth, companies_controller_1.getCompanyContracts);
 router.post('/admin/companies/:id/contracts', auth_1.requireAuth, companies_controller_1.addCompanyContract);

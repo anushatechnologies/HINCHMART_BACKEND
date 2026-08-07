@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRfqMessages = exports.getRfqDetails = exports.createQuote = exports.getMyRfqs = exports.getRfqs = exports.createRfq = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
+const socket_1 = require("../../socket");
 const createRfq = async (req, res) => {
     try {
         const { items, notes, boqUrl } = req.body;
@@ -128,6 +129,8 @@ const createQuote = async (req, res) => {
             where: { id: rfqId },
             data: { status: 'QUOTED' }
         });
+        // Broadcast socket event to RFQ room
+        (0, socket_1.emitRfqQuoteUpdate)(rfqId, quote);
         res.status(201).json({ success: true, message: 'Quote generated successfully', data: quote });
     }
     catch (error) {
