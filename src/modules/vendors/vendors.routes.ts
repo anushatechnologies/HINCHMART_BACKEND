@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getVendors, createVendor, updateVendorStatus, updateVendorKycStatus, deleteVendor, registerVendor, loginVendor, verifyFirebaseVendor, verifyOtp, forgotPassword, resetPassword } from './vendors.controller';
+import { getVendors, createVendor, updateVendorStatus, updateVendorKycStatus, deleteVendor, registerVendor, loginVendor, verifyFirebaseVendor, verifyOtp, forgotPassword, resetPassword, linkFirebaseProvider } from './vendors.controller';
 import { getVendorOrders, updateOrderItemStatus } from './vendor-orders.controller';
 import { getVendorProducts, getVendorProductById, createVendorProduct, updateVendorInventory } from './vendor-products.controller';
 import { getVendorCategories, requestCategoryApproval, getVendorBrands, requestBrandApproval } from './vendor-categories.controller';
@@ -11,6 +11,7 @@ const router = Router();
 router.post('/register', registerVendor);
 router.post('/login', loginVendor);
 router.post('/verify-firebase', verifyFirebaseVendor);
+router.post('/link-provider', linkFirebaseProvider);
 router.post('/verify-otp', verifyOtp);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);

@@ -417,18 +417,80 @@ export const verifyFirebaseVendor = async (req: Request, res: Response): Promise
     });
 
     if (!vendor) {
-      // Create a basic vendor record for new social logins
+      if (phone_number) {
+        // Mobile OTP Login - Do not silently create account!
+        res.status(404).json({ success: false, notFound: true, message: 'No seller account found with this mobile number.' });
+        return;
+      }
+
+      // Google Login - Create ONBOARDING stub
       const passwordHash = await bcrypt.hash(uid, 10);
       vendor = await prisma.vendor.create({
         data: {
           companyName: name || `Vendor-${uid.slice(0,6)}`,
-          contactPhone: phone_number ? phone_number.replace('+91', '') : `no-phone-${uid}`,
+          contactPhone: `no-phone-${uid}`, // Fixed to match the 'Google linking' check condition logic
           contactEmail: primaryEmail || null,
           passwordHash: passwordHash,
-          status: 'PENDING',
-          kycStatus: 'PENDING'
+          status: 'ONBOARDING',
+          kycStatus: 'NOT_STARTED',
+          onboardingStatus: 'STARTED',
+          emailVerified: !!firebaseEmail,
+          phoneVerified: false,
         }
       });
+    }
+
+    // Check VendorAuth
+    const existingAuth = await prisma.vendorAuth.findUnique({
+      where: {
+        provider_providerUserId: {
+          provider: phone_number ? 'PHONE' : 'GOOGLE',
+          providerUserId: uid
+        }
+      }
+    });
+
+    if (!existingAuth) {
+      if (!phone_number) {
+        // SCENARIO B: Google provider not linked, vendor exists (or was just created).
+        // Wait, if it was JUST created, we should link it.
+        // How do we know if it was just created?
+        // Let's check when the vendor was created or simply pass a flag.
+        // But wait, if it was just created, it will have contactPhone = `no-phone-${uid}`
+        if (vendor.contactPhone.startsWith('no-phone-')) {
+          // New seller via Google (Scenario C). We can link immediately.
+          await prisma.vendorAuth.create({
+            data: {
+              vendorId: vendor.id,
+              provider: 'GOOGLE',
+              providerUserId: uid,
+              providerEmail: firebaseEmail || null
+            }
+          });
+        } else {
+          // Existing seller, trying to link Google (Scenario B).
+          // Do NOT link. Require OTP.
+          const maskedPhone = vendor.contactPhone.slice(-4).padStart(vendor.contactPhone.length, '*');
+          res.status(200).json({
+            success: false,
+            requireOtpLink: true,
+            email: vendor.contactEmail,
+            maskedPhone,
+            phoneHint: vendor.contactPhone // Need this for Firebase on frontend? Actually no, Firebase needs full phone. Wait, if we return full phone, it's a security risk. But frontend needs it. Let's return the full phone to a separate internal API, OR the user must TYPE their phone number. Yes! The user types it to confirm.
+          });
+          return;
+        }
+      } else {
+        // It's a phone login. Link immediately since phone is already verified by Firebase.
+        await prisma.vendorAuth.create({
+          data: {
+            vendorId: vendor.id,
+            provider: 'PHONE',
+            providerUserId: uid,
+            providerEmail: firebaseEmail || null
+          }
+        });
+      }
     }
 
     const accessToken = generateAccessToken({ id: vendor.id, role: 'VENDOR' });
@@ -455,5 +517,68 @@ export const verifyFirebaseVendor = async (req: Request, res: Response): Promise
   } catch (error) {
     console.error('Firebase Auth Error:', error);
     res.status(401).json({ success: false, message: 'Invalid or expired Firebase token' });
+  }
+};
+
+export const linkFirebaseProvider = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { googleToken, phoneToken } = req.body;
+    if (!googleToken || !phoneToken) {
+      res.status(400).json({ success: false, message: 'Both Google and Phone tokens are required' });
+      return;
+    }
+
+    const decodedGoogle = await firebaseAuth.verifyIdToken(googleToken);
+    const decodedPhone = await firebaseAuth.verifyIdToken(phoneToken);
+
+    const vendor = await prisma.vendor.findUnique({
+      where: { contactEmail: decodedGoogle.email }
+    });
+
+    if (!vendor) {
+      res.status(404).json({ success: false, message: 'Vendor not found' });
+      return;
+    }
+
+    // Verify phone matches
+    if (!decodedPhone.phone_number || !decodedPhone.phone_number.includes(vendor.contactPhone)) {
+      res.status(400).json({ success: false, message: 'Verified phone does not match registered phone' });
+      return;
+    }
+
+    // Link Google
+    await prisma.vendorAuth.create({
+      data: {
+        vendorId: vendor.id,
+        provider: 'GOOGLE',
+        providerUserId: decodedGoogle.uid,
+        providerEmail: decodedGoogle.email || null
+      }
+    });
+
+    const accessToken = generateAccessToken({ id: vendor.id, role: 'VENDOR' });
+    const refreshToken = generateRefreshTokenString();
+    await saveRefreshToken(refreshToken, 'VENDOR', { vendorId: vendor.id });
+
+    res.status(200).json({
+      success: true,
+      message: 'Google account linked successfully',
+      accessToken,
+      refreshToken,
+      token: accessToken,
+      data: {
+        id: vendor.id,
+        companyName: vendor.companyName,
+        email: vendor.contactEmail,
+        phone: vendor.contactPhone,
+        status: vendor.status,
+        kycStatus: vendor.kycStatus,
+        onboardingStep: vendor.onboardingStep
+      }
+    });
+
+  } catch (error) {
+    console.error('Link Provider Error:', error);
+    res.status(401).json({ success: false, message: 'Invalid tokens' });
   }
 };

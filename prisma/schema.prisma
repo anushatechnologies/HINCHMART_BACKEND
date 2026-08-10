@@ -265,6 +265,9 @@ model Vendor {
   contactEmail String  @unique @map("contact_email")
   contactPhone String  @unique @map("contact_phone")
   passwordHash String? @map("password_hash")
+  emailVerified Boolean @default(false) @map("email_verified")
+  phoneVerified Boolean @default(false) @map("phone_verified")
+  onboardingStatus String @default("STARTED") @map("onboarding_status") // STARTED, INCOMPLETE, SUBMITTED, COMPLETED
   
   // Push Notifications (FCM)
   fcmTokens    Json?   @default("[]") @map("fcm_tokens")
@@ -318,6 +321,7 @@ model Vendor {
 
   createdAt    DateTime @default(now()) @map("created_at")
 
+  authProviders  VendorAuth[]
   products       Product[]
   quotes         Quote[]
   settlements    VendorSettlement[]
@@ -1795,4 +1799,18 @@ model Banner {
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@map("banners")
+}
+
+model VendorAuth {
+  id             Int      @id @default(autoincrement())
+  vendorId       Int      @map("vendor_id")
+  provider       String   // 'GOOGLE', 'EMAIL', 'PHONE'
+  providerUserId String   @map("provider_user_id") // Google UID, or Phone number, etc.
+  providerEmail  String?  @map("provider_email")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  vendor         Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@map("vendor_auths")
 }
